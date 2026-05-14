@@ -24,13 +24,13 @@ GPIO.setup(RED_LED, GPIO.OUT)
 
 
 # -----------------------
-# LCD SETUP
+# LCD SETUP (FIXED)
 # -----------------------
 lcd = CharLCD(
     i2c_expander='PCF8574',
     address=0x27,
     port=1,
-    cols=20,
+    cols=16,   # 🔴 IMPORTANT FIX
     rows=4
 )
 
@@ -128,13 +128,26 @@ def set_led(state):
 
 
 # -----------------------
-# LCD UPDATE (FIXED STABLE VERSION)
+# SAFE LCD WRITE (NO WRAP, NO SHIFT)
+# -----------------------
+def lcd_write(row, text):
+    text = str(text)
+
+    # 🔴 FORCE EXACT 16 CHAR WIDTH
+    text = (text + " " * 16)[:16]
+
+    lcd.cursor_pos = (row, 0)
+    lcd.write_string(text)
+
+
+# -----------------------
+# LCD UPDATE (STABLE)
 # -----------------------
 def lcd_update(temp, current, state, ml=None):
     ph_time = get_ph_time()
 
     line1 = f"TIME:{ph_time}"
-    line2 = f"T:{temp:5.1f}C I:{current:5.2f}A"
+    line2 = f"T:{temp:.1f} I:{current:.2f}"
     line3 = f"STATE:{state}"
 
     if ml:
@@ -142,18 +155,10 @@ def lcd_update(temp, current, state, ml=None):
     else:
         line4 = "SYSTEM MONITORING"
 
-    lines = [line1, line2, line3, line4]
-
-    # ❗ NO lcd.clear() here (this was causing misalignment/flicker)
-
-    for i in range(4):
-        text = lines[i]
-
-        # FORCE EXACT 20 CHAR WIDTH (CRITICAL FIX)
-        text = (text + " " * 20)[:20]
-
-        lcd.cursor_pos = (i, 0)
-        lcd.write_string(text)
+    lcd_write(0, line1)
+    lcd_write(1, line2)
+    lcd_write(2, line3)
+    lcd_write(3, line4)
 
 
 # -----------------------
@@ -163,8 +168,7 @@ def run():
     print("System running...")
 
     lcd.clear()
-    lcd.cursor_pos = (0, 0)
-    lcd.write_string("SYSTEM STARTING".ljust(20))
+    lcd_write(0, "SYSTEM STARTING")
     time.sleep(1)
 
     while True:
@@ -199,15 +203,10 @@ def run():
 
             set_led("Error")
 
-            # error screen (safe)
-            lcd.cursor_pos = (0, 0)
-            lcd.write_string("SYSTEM ERROR".ljust(20))
-            lcd.cursor_pos = (1, 0)
-            lcd.write_string("CHECK CONNECTION".ljust(20))
-            lcd.cursor_pos = (2, 0)
-            lcd.write_string(" ".ljust(20))
-            lcd.cursor_pos = (3, 0)
-            lcd.write_string(" ".ljust(20))
+            lcd_write(0, "SYSTEM ERROR")
+            lcd_write(1, "CHECK CONNECTION")
+            lcd_write(2, "")
+            lcd_write(3, "")
 
         time.sleep(1)
 
