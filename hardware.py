@@ -1,6 +1,7 @@
 import requests
 import time
 import math
+import os
 from datetime import datetime
 
 import RPi.GPIO as GPIO
@@ -24,13 +25,13 @@ GPIO.setup(RED_LED, GPIO.OUT)
 
 
 # -----------------------
-# LCD SETUP (FIXED)
+# LCD SETUP
 # -----------------------
 lcd = CharLCD(
     i2c_expander='PCF8574',
     address=0x27,
     port=1,
-    cols=16,   # 🔴 IMPORTANT FIX
+    cols=16,
     rows=4
 )
 
@@ -57,6 +58,17 @@ ADS1115_ADDR = 0x48
 
 
 # -----------------------
+# I2C RECOVERY
+# -----------------------
+def recover_i2c():
+    try:
+        os.system("i2cdetect -y 1 > /dev/null 2>&1")
+        time.sleep(0.1)
+    except:
+        pass
+
+
+# -----------------------
 # TIME
 # -----------------------
 def get_ph_time():
@@ -77,7 +89,7 @@ def read_adc(channel=0):
 
 
 # -----------------------
-# CURRENT RMS
+# CURRENT RMS (STABLE)
 # -----------------------
 def read_current_rms(window_ms=300):
     start = time.time()
@@ -87,6 +99,9 @@ def read_current_rms(window_ms=300):
     samples = 0
 
     while (time.time() - start) < (window_ms / 1000):
+
+        time.sleep(0.001)  # IMPORTANT: prevents I2C overload
+
         raw = read_adc(0)
 
         offset += (raw - offset) * 0.01
@@ -128,32 +143,46 @@ def set_led(state):
 
 
 # -----------------------
-# SAFE LCD WRITE (NO WRAP, NO SHIFT)
+# SAFE LCD WRITE
 # -----------------------
 def lcd_write(row, text):
-    text = str(text)
+    try:
+        text = (str(text) + " " * 16)[:16]
+        lcd.cursor_pos = (row, 0)
+        lcd.write_string(text)
 
-    # 🔴 FORCE EXACT 16 CHAR WIDTH
-    text = (text + " " * 16)[:16]
-
-    lcd.cursor_pos = (row, 0)
-    lcd.write_string(text)
+    except Exception as e:
+        print("LCD ERROR:", e)
+        recover_i2c()
 
 
 # -----------------------
-# LCD UPDATE (STABLE)
+# LCD UPDATE (CLEAN UI)
 # -----------------------
-def lcd_update(temp, current, state, ml=None):
+def lcd_update(state, ml=None):
+
     ph_time = get_ph_time()
 
-    line1 = f"TIME:{ph_time}"
-    line2 = f"T:{temp:.1f} I:{current:.2f}"
-    line3 = f"STATE:{state}"
+    hotspot = 0.0
+    overload = 0.0
 
     if ml:
-        line4 = f"H:{ml.get('hotspot_prob',0):.2f} O:{ml.get('overload_prob',0):.2f}"
+        hotspot = ml.get("hotspot_prob", 0.0)
+        overload = ml.get("overload_prob", 0.0)
+
+    # -----------------------
+    # SIMPLE CLEAR UI LAYOUT
+    # -----------------------
+    line1 = f"{ph_time} {state}"
+    line2 = f"H:{hotspot:.2f}"
+    line3 = f"O:{overload:.2f}"
+
+    if state == "Normal":
+        line4 = "SYSTEM OK"
+    elif state == "Warning":
+        line4 = "CHECK LOAD"
     else:
-        line4 = "SYSTEM MONITORING"
+        line4 = "ALERT"
 
     lcd_write(0, line1)
     lcd_write(1, line2)
@@ -194,7 +223,7 @@ def run():
             ml = result.get("ml", None)
 
             set_led(state)
-            lcd_update(temp, current, state, ml)
+            lcd_update(state, ml)
 
             print(f"{state} | T:{temp:.2f} | I:{current:.2f}")
 
@@ -203,10 +232,14 @@ def run():
 
             set_led("Error")
 
-            lcd_write(0, "SYSTEM ERROR")
-            lcd_write(1, "CHECK CONNECTION")
-            lcd_write(2, "")
-            lcd_write(3, "")
+            try:
+                recover_i2c()
+                lcd_write(0, "SYSTEM ERROR")
+                lcd_write(1, "RESTARTING LCD")
+                lcd_write(2, "")
+                lcd_write(3, "")
+            except:
+                pass
 
         time.sleep(1)
 
