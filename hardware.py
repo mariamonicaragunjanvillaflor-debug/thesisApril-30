@@ -1,11 +1,12 @@
 import requests
 import time
 import math
+from datetime import datetime
+
 import RPi.GPIO as GPIO
 from RPLCD.i2c import CharLCD
 from smbus2 import SMBus
 
-# MLX90614 IR Temperature Sensor
 import board
 import busio
 import adafruit_mlx90614
@@ -44,7 +45,6 @@ bus = SMBus(1)
 i2c = busio.I2C(board.SCL, board.SDA)
 mlx = adafruit_mlx90614.MLX90614(i2c)
 
-
 ADS1115_ADDR = 0x48
 
 
@@ -52,6 +52,13 @@ ADS1115_ADDR = 0x48
 # STATE MEMORY
 # -----------------------
 last_state = None
+
+
+# -----------------------
+# TIME (PH LOCAL)
+# -----------------------
+def get_ph_time():
+    return datetime.now().strftime("%H:%M:%S")
 
 
 # -----------------------
@@ -68,7 +75,7 @@ def read_adc(channel=0):
 
 
 # -----------------------
-# CURRENT (RMS SCT-013)
+# CURRENT RMS
 # -----------------------
 def read_current_rms(window_ms=300):
     start = time.time()
@@ -78,30 +85,25 @@ def read_current_rms(window_ms=300):
     samples = 0
 
     while (time.time() - start) < (window_ms / 1000):
-
         raw = read_adc(0)
 
         offset += (raw - offset) * 0.01
-
         centered = raw - offset
-        sum_sq += centered * centered
 
+        sum_sq += centered * centered
         samples += 1
 
     if samples == 0:
         return 0.0
 
     rms_counts = math.sqrt(sum_sq / samples)
-    current = rms_counts * 0.001  # keep your calibration if needed
+    current = rms_counts * 0.001
 
-    if current < 0.05:
-        current = 0.0
-
-    return current
+    return 0.0 if current < 0.05 else current
 
 
 # -----------------------
-# TEMPERATURE (MLX90614)
+# TEMPERATURE
 # -----------------------
 def read_temperature():
     try:
@@ -111,30 +113,21 @@ def read_temperature():
 
 
 # -----------------------
-# LED CONTROL (FIXED)
+# LED CONTROL
 # -----------------------
 def set_led(state):
-
-    # 🔥 ALWAYS RESET FIRST (VERY IMPORTANT FIX)
     GPIO.output(GREEN_LED, 0)
     GPIO.output(RED_LED, 0)
 
     if state == "Normal":
         GPIO.output(GREEN_LED, 1)
 
-    elif state in ["Overload", "Overheating"]:
-        GPIO.output(RED_LED, 1)
-
-    elif state == "Error":
-        GPIO.output(RED_LED, 1)
-
     else:
-        # unknown state safety fallback
         GPIO.output(RED_LED, 1)
 
 
 # -----------------------
-# LCD UPDATE
+# LCD UPDATE (IMPROVED UI)
 # -----------------------
 def lcd_update(temp, current, state, ml=None):
     global last_state
@@ -143,23 +136,29 @@ def lcd_update(temp, current, state, ml=None):
         lcd.clear()
         last_state = state
 
-    # ALWAYS overwrite full rows (prevents shifting)
+    ph_time = get_ph_time()
+
+    # LINE 1 - TIME
     lcd.cursor_pos = (0, 0)
-    lcd.write_string(f"T:{temp:5.1f}C I:{current:5.2f}A     ")
+    lcd.write_string(f"TIME:{ph_time}       ")
 
+    # LINE 2 - SENSOR DATA
     lcd.cursor_pos = (1, 0)
-    lcd.write_string(f"STATE: {state:<12}")
+    lcd.write_string(f"T:{temp:5.1f}C I:{current:5.2f}A ")
 
+    # LINE 3 - STATE
     lcd.cursor_pos = (2, 0)
+    lcd.write_string(f"STATE:{state:<12}     ")
+
+    # LINE 4 - ML / STATUS
+    lcd.cursor_pos = (3, 0)
     if ml:
         lcd.write_string(
-            f"H:{ml.get('hotspot_prob',0):.2f} O:{ml.get('overload_prob',0):.2f}   "
+            f"H:{ml.get('hotspot_prob',0):.2f} "
+            f"O:{ml.get('overload_prob',0):.2f}"
         )
     else:
-        lcd.write_string(" " * 20)
-
-    lcd.cursor_pos = (3, 0)
-    lcd.write_string(" " * 20)
+        lcd.write_string("SYSTEM MONITORING   ")
 
 
 # -----------------------
@@ -190,7 +189,6 @@ def run():
             state = result.get("state", "Unknown")
             ml = result.get("ml", None)
 
-            # LED + LCD update (clean and safe)
             set_led(state)
             lcd_update(temp, current, state, ml)
 
@@ -199,7 +197,6 @@ def run():
         except Exception as e:
             print("ERROR:", e)
 
-            # SAFE FAIL STATE
             set_led("Error")
             lcd_update(0, 0, "Error", None)
 
