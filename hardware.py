@@ -24,7 +24,7 @@ GPIO.setup(RED_LED, GPIO.OUT)
 
 
 # -----------------------
-# LCD SETUP (FIXED - MATCH WORKING VERSION)
+# LCD SETUP
 # -----------------------
 lcd = CharLCD(
     i2c_expander='PCF8574',
@@ -57,13 +57,7 @@ ADS1115_ADDR = 0x48
 
 
 # -----------------------
-# STATE MEMORY
-# -----------------------
-last_state = None
-
-
-# -----------------------
-# TIME (PH LOCAL)
+# TIME
 # -----------------------
 def get_ph_time():
     return datetime.now().strftime("%H:%M:%S")
@@ -134,7 +128,7 @@ def set_led(state):
 
 
 # -----------------------
-# LCD UPDATE (IMPROVED + SAFE PADDING)
+# LCD UPDATE (FIXED STABLE VERSION)
 # -----------------------
 def lcd_update(temp, current, state, ml=None):
     ph_time = get_ph_time()
@@ -150,11 +144,16 @@ def lcd_update(temp, current, state, ml=None):
 
     lines = [line1, line2, line3, line4]
 
-    lcd.clear()
+    # ❗ NO lcd.clear() here (this was causing misalignment/flicker)
 
     for i in range(4):
+        text = lines[i]
+
+        # FORCE EXACT 20 CHAR WIDTH (CRITICAL FIX)
+        text = (text + " " * 20)[:20]
+
         lcd.cursor_pos = (i, 0)
-        lcd.write_string(lines[i][:20].ljust(20))  # safe trim + padding
+        lcd.write_string(text)
 
 
 # -----------------------
@@ -200,11 +199,15 @@ def run():
 
             set_led("Error")
 
-            lcd.clear()
+            # error screen (safe)
             lcd.cursor_pos = (0, 0)
             lcd.write_string("SYSTEM ERROR".ljust(20))
             lcd.cursor_pos = (1, 0)
             lcd.write_string("CHECK CONNECTION".ljust(20))
+            lcd.cursor_pos = (2, 0)
+            lcd.write_string(" ".ljust(20))
+            lcd.cursor_pos = (3, 0)
+            lcd.write_string(" ".ljust(20))
 
         time.sleep(1)
 
