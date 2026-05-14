@@ -130,18 +130,14 @@ def set_led(state):
 # LCD UPDATE (IMPROVED UI)
 # -----------------------
 def lcd_update(temp, current, state, ml=None):
-    global last_state
 
     ph_time = get_ph_time()
 
     def write(row, text):
         lcd.cursor_pos = (row, 0)
-        lcd.write_string(text.ljust(20))  # FORCE overwrite full row
-
-    # Clear ONLY when state changes OR first run
-    if state != last_state:
-        lcd.clear()
-        last_state = state
+        lcd.write_string(" " * 20)   # HARD CLEAR ROW
+        lcd.cursor_pos = (row, 0)
+        lcd.write_string(text[:20])   # WRITE CLEAN DATA
 
     # LINE 1
     write(0, f"TIME:{ph_time}")
