@@ -24,10 +24,18 @@ GPIO.setup(RED_LED, GPIO.OUT)
 
 
 # -----------------------
-# LCD SETUP
+# LCD SETUP (FIXED - MATCH WORKING VERSION)
 # -----------------------
-lcd = CharLCD('PCF8574', 0x27, cols=20, rows=4)
+lcd = CharLCD(
+    i2c_expander='PCF8574',
+    address=0x27,
+    port=1,
+    cols=20,
+    rows=4
+)
+
 lcd.clear()
+time.sleep(0.5)
 
 
 # -----------------------
@@ -62,7 +70,7 @@ def get_ph_time():
 
 
 # -----------------------
-# ADS1115 READ
+# ADC READ
 # -----------------------
 def read_adc(channel=0):
     raw = bus.read_word_data(ADS1115_ADDR, 0x40 + channel)
@@ -121,41 +129,44 @@ def set_led(state):
 
     if state == "Normal":
         GPIO.output(GREEN_LED, 1)
-
     else:
         GPIO.output(RED_LED, 1)
 
 
 # -----------------------
-# LCD UPDATE (IMPROVED UI)
+# LCD UPDATE (IMPROVED + SAFE PADDING)
 # -----------------------
 def lcd_update(temp, current, state, ml=None):
-
     ph_time = get_ph_time()
 
-    lines = [
-        f"TIME:{ph_time}",
-        f"T:{temp:5.1f}C I:{current:5.2f}A",
-        f"STATE:{state}",
-        ""
-    ]
+    line1 = f"TIME:{ph_time}"
+    line2 = f"T:{temp:5.1f}C I:{current:5.2f}A"
+    line3 = f"STATE:{state}"
 
     if ml:
-        lines[3] = f"H:{ml.get('hotspot_prob',0):.2f} O:{ml.get('overload_prob',0):.2f}"
+        line4 = f"H:{ml.get('hotspot_prob',0):.2f} O:{ml.get('overload_prob',0):.2f}"
     else:
-        lines[3] = "SYSTEM MONITORING"
+        line4 = "SYSTEM MONITORING"
+
+    lines = [line1, line2, line3, line4]
 
     lcd.clear()
 
     for i in range(4):
         lcd.cursor_pos = (i, 0)
-        lcd.write_string(lines[i].ljust(20))
+        lcd.write_string(lines[i][:20].ljust(20))  # safe trim + padding
+
 
 # -----------------------
 # MAIN LOOP
 # -----------------------
 def run():
     print("System running...")
+
+    lcd.clear()
+    lcd.cursor_pos = (0, 0)
+    lcd.write_string("SYSTEM STARTING".ljust(20))
+    time.sleep(1)
 
     while True:
         try:
@@ -188,7 +199,12 @@ def run():
             print("ERROR:", e)
 
             set_led("Error")
-            lcd_update(0, 0, "Error", None)
+
+            lcd.clear()
+            lcd.cursor_pos = (0, 0)
+            lcd.write_string("SYSTEM ERROR".ljust(20))
+            lcd.cursor_pos = (1, 0)
+            lcd.write_string("CHECK CONNECTION".ljust(20))
 
         time.sleep(1)
 
