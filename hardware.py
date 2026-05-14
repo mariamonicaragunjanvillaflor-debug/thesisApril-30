@@ -132,33 +132,35 @@ def set_led(state):
 def lcd_update(temp, current, state, ml=None):
     global last_state
 
+    ph_time = get_ph_time()
+
+    def write(row, text):
+        lcd.cursor_pos = (row, 0)
+        lcd.write_string(text.ljust(20))  # FORCE overwrite full row
+
+    # Clear ONLY when state changes OR first run
     if state != last_state:
         lcd.clear()
         last_state = state
 
-    ph_time = get_ph_time()
+    # LINE 1
+    write(0, f"TIME:{ph_time}")
 
-    # LINE 1 - TIME
-    lcd.cursor_pos = (0, 0)
-    lcd.write_string(f"TIME:{ph_time}       ")
+    # LINE 2
+    write(1, f"T:{temp:5.1f}C I:{current:5.2f}A")
 
-    # LINE 2 - SENSOR DATA
-    lcd.cursor_pos = (1, 0)
-    lcd.write_string(f"T:{temp:5.1f}C I:{current:5.2f}A ")
+    # LINE 3
+    write(2, f"STATE:{state}")
 
-    # LINE 3 - STATE
-    lcd.cursor_pos = (2, 0)
-    lcd.write_string(f"STATE:{state:<12}     ")
-
-    # LINE 4 - ML / STATUS
-    lcd.cursor_pos = (3, 0)
+    # LINE 4
     if ml:
-        lcd.write_string(
+        write(
+            3,
             f"H:{ml.get('hotspot_prob',0):.2f} "
             f"O:{ml.get('overload_prob',0):.2f}"
         )
     else:
-        lcd.write_string("SYSTEM MONITORING   ")
+        write(3, "SYSTEM MONITORING")
 
 
 # -----------------------
