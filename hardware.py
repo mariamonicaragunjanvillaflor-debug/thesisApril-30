@@ -176,10 +176,24 @@ def lcd_update(state, ml=None):
     hotspot = ml.get("hotspot_prob", 0.0) if ml else 0.0
     overload = ml.get("overload_prob", 0.0) if ml else 0.0
 
-    line1 = center_text(f"{ph_time}|{state}")
+    # -----------------------
+    # LINE 1 (TIME ONLY, CENTERED)
+    # -----------------------
+    line1 = center_text(ph_time)
+
+    # -----------------------
+    # LINE 2
+    # -----------------------
     line2 = center_text(f"HP:{hotspot:.2f}")
+
+    # -----------------------
+    # LINE 3
+    # -----------------------
     line3 = center_text(f"OP:{overload:.2f}")
 
+    # -----------------------
+    # LINE 4 (STATE + STATUS)
+    # -----------------------
     if state == "Normal":
         status = "SYSTEM OK"
     elif state == "Warning":
@@ -193,7 +207,6 @@ def lcd_update(state, ml=None):
     lcd_write(1, line2)
     lcd_write(2, line3)
     lcd_write(3, line4)
-
 
 # -----------------------
 # MAIN LOOP
