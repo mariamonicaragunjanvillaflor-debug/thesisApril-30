@@ -143,17 +143,23 @@ def lcd_update(temp, current, state, ml=None):
         lcd.clear()
         last_state = state
 
+    # ALWAYS overwrite full rows (prevents shifting)
     lcd.cursor_pos = (0, 0)
-    lcd.write_string(f"T:{temp:.1f}C I:{current:.2f}A   ")
+    lcd.write_string(f"T:{temp:5.1f}C I:{current:5.2f}A     ")
 
     lcd.cursor_pos = (1, 0)
-    lcd.write_string(f"STATE: {state}        ")
+    lcd.write_string(f"STATE: {state:<12}")
 
+    lcd.cursor_pos = (2, 0)
     if ml:
-        lcd.cursor_pos = (2, 0)
         lcd.write_string(
-            f"H:{ml.get('hotspot_prob',0):.2f} O:{ml.get('overload_prob',0):.2f}"
+            f"H:{ml.get('hotspot_prob',0):.2f} O:{ml.get('overload_prob',0):.2f}   "
         )
+    else:
+        lcd.write_string(" " * 20)
+
+    lcd.cursor_pos = (3, 0)
+    lcd.write_string(" " * 20)
 
 
 # -----------------------
