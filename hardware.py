@@ -58,7 +58,7 @@ ADS1115_ADDR = 0x48
 
 
 # -----------------------
-# I2C RECOVERY
+# RECOVERY
 # -----------------------
 def recover_i2c():
     try:
@@ -76,6 +76,18 @@ def get_ph_time():
 
 
 # -----------------------
+# CENTER TEXT (FIXED MISSING FUNCTION)
+# -----------------------
+def center_text(text, width=16):
+    text = str(text)
+
+    if len(text) >= width:
+        return text[:width]
+
+    return text.center(width)
+
+
+# -----------------------
 # ADC READ
 # -----------------------
 def read_adc(channel=0):
@@ -89,7 +101,7 @@ def read_adc(channel=0):
 
 
 # -----------------------
-# CURRENT RMS (STABLE)
+# CURRENT RMS
 # -----------------------
 def read_current_rms(window_ms=300):
     start = time.time()
@@ -99,8 +111,7 @@ def read_current_rms(window_ms=300):
     samples = 0
 
     while (time.time() - start) < (window_ms / 1000):
-
-        time.sleep(0.001)  # IMPORTANT: prevents I2C overload
+        time.sleep(0.001)
 
         raw = read_adc(0)
 
@@ -113,8 +124,8 @@ def read_current_rms(window_ms=300):
     if samples == 0:
         return 0.0
 
-    rms_counts = math.sqrt(sum_sq / samples)
-    current = rms_counts * 0.001
+    rms = math.sqrt(sum_sq / samples)
+    current = rms * 0.001
 
     return 0.0 if current < 0.05 else current
 
@@ -143,7 +154,7 @@ def set_led(state):
 
 
 # -----------------------
-# SAFE LCD WRITE
+# SAFE LCD WRITE (ONLY METHOD USED)
 # -----------------------
 def lcd_write(row, text):
     try:
@@ -157,36 +168,18 @@ def lcd_write(row, text):
 
 
 # -----------------------
-# LCD UPDATE (CLEAN UI)
+# LCD UPDATE (CLEAN + CENTERED)
 # -----------------------
 def lcd_update(state, ml=None):
     ph_time = get_ph_time()
 
-    hotspot = 0.0
-    overload = 0.0
+    hotspot = ml.get("hotspot_prob", 0.0) if ml else 0.0
+    overload = ml.get("overload_prob", 0.0) if ml else 0.0
 
-    if ml:
-        hotspot = ml.get("hotspot_prob", 0.0)
-        overload = ml.get("overload_prob", 0.0)
+    line1 = center_text(f"{ph_time}|{state}")
+    line2 = center_text(f"HP:{hotspot:.2f}")
+    line3 = center_text(f"OP:{overload:.2f}")
 
-    # -----------------------
-    # LINE 1
-    # -----------------------
-    line1 = center_text(f"{ph_time}|{state}", 16)
-
-    # -----------------------
-    # LINE 2
-    # -----------------------
-    line2 = center_text(f"HP:{hotspot:.2f}", 16)
-
-    # -----------------------
-    # LINE 3
-    # -----------------------
-    line3 = center_text(f"OP:{overload:.2f}", 16)
-
-    # -----------------------
-    # LINE 4 (STATE + STATUS)
-    # -----------------------
     if state == "Normal":
         status = "SYSTEM OK"
     elif state == "Warning":
@@ -194,14 +187,13 @@ def lcd_update(state, ml=None):
     else:
         status = "ALERT"
 
-    line4 = center_text(f"{state}|{status}", 16)
+    line4 = center_text(f"{state}|{status}")
 
-    lines = [line1, line2, line3, line4]
+    lcd_write(0, line1)
+    lcd_write(1, line2)
+    lcd_write(2, line3)
+    lcd_write(3, line4)
 
-    for i in range(4):
-        text = (lines[i] + " " * 16)[:16]
-        lcd.cursor_pos = (i, 0)
-        lcd.write_string(text)
 
 # -----------------------
 # MAIN LOOP
