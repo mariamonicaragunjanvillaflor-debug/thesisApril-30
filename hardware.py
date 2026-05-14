@@ -133,31 +133,23 @@ def lcd_update(temp, current, state, ml=None):
 
     ph_time = get_ph_time()
 
-    def write(row, text):
-        lcd.cursor_pos = (row, 0)
-        lcd.write_string(" " * 20)   # HARD CLEAR ROW
-        lcd.cursor_pos = (row, 0)
-        lcd.write_string(text[:20])   # WRITE CLEAN DATA
+    lines = [
+        f"TIME:{ph_time}",
+        f"T:{temp:5.1f}C I:{current:5.2f}A",
+        f"STATE:{state}",
+        ""
+    ]
 
-    # LINE 1
-    write(0, f"TIME:{ph_time}")
-
-    # LINE 2
-    write(1, f"T:{temp:5.1f}C I:{current:5.2f}A")
-
-    # LINE 3
-    write(2, f"STATE:{state}")
-
-    # LINE 4
     if ml:
-        write(
-            3,
-            f"H:{ml.get('hotspot_prob',0):.2f} "
-            f"O:{ml.get('overload_prob',0):.2f}"
-        )
+        lines[3] = f"H:{ml.get('hotspot_prob',0):.2f} O:{ml.get('overload_prob',0):.2f}"
     else:
-        write(3, "SYSTEM MONITORING")
+        lines[3] = "SYSTEM MONITORING"
 
+    lcd.clear()
+
+    for i in range(4):
+        lcd.cursor_pos = (i, 0)
+        lcd.write_string(lines[i].ljust(20))
 
 # -----------------------
 # MAIN LOOP
