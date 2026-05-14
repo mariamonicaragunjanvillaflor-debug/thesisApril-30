@@ -160,7 +160,6 @@ def lcd_write(row, text):
 # LCD UPDATE (CLEAN UI)
 # -----------------------
 def lcd_update(state, ml=None):
-
     ph_time = get_ph_time()
 
     hotspot = 0.0
@@ -171,24 +170,38 @@ def lcd_update(state, ml=None):
         overload = ml.get("overload_prob", 0.0)
 
     # -----------------------
-    # SIMPLE CLEAR UI LAYOUT
+    # LINE 1
     # -----------------------
-    line1 = f"{ph_time} {state}"
-    line2 = f"H:{hotspot:.2f}"
-    line3 = f"O:{overload:.2f}"
+    line1 = center_text(f"{ph_time}|{state}", 16)
 
+    # -----------------------
+    # LINE 2
+    # -----------------------
+    line2 = center_text(f"HP:{hotspot:.2f}", 16)
+
+    # -----------------------
+    # LINE 3
+    # -----------------------
+    line3 = center_text(f"OP:{overload:.2f}", 16)
+
+    # -----------------------
+    # LINE 4 (STATE + STATUS)
+    # -----------------------
     if state == "Normal":
-        line4 = "SYSTEM OK"
+        status = "SYSTEM OK"
     elif state == "Warning":
-        line4 = "CHECK LOAD"
+        status = "CHECK LOAD"
     else:
-        line4 = "ALERT"
+        status = "ALERT"
 
-    lcd_write(0, line1)
-    lcd_write(1, line2)
-    lcd_write(2, line3)
-    lcd_write(3, line4)
+    line4 = center_text(f"{state}|{status}", 16)
 
+    lines = [line1, line2, line3, line4]
+
+    for i in range(4):
+        text = (lines[i] + " " * 16)[:16]
+        lcd.cursor_pos = (i, 0)
+        lcd.write_string(text)
 
 # -----------------------
 # MAIN LOOP
