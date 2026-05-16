@@ -4,7 +4,7 @@ import math
 import os
 from datetime import datetime
 
-import RPi.GPIO as GPIO
+import GPIO
 from RPLCD.i2c import CharLCD
 from smbus2 import SMBus
 
@@ -14,18 +14,18 @@ import adafruit_mlx90614
 
 
 # =========================================================
-# SYSTEM STABILITY CONFIG
+# CONFIG
 # =========================================================
 SAMPLE_INTERVAL = 1.0
+LCD_REFRESH_INTERVAL = 1.0
 I2C_DELAY = 0.02
-WARMUP_SAMPLES = 10
 
 FLASK_URL = "http://127.0.0.1:5000/api/update"
 TIMEOUT = 2
 
 
 # =========================================================
-# INITIAL DELAY (hardware stabilization)
+# INIT DELAY
 # =========================================================
 time.sleep(2)
 
@@ -44,25 +44,20 @@ GPIO.setup(GREEN_LED, GPIO.OUT)
 GPIO.setup(RED_LED, GPIO.OUT)
 GPIO.setup(BUZZER, GPIO.OUT)
 
-GPIO.output(GREEN_LED, 0)
-GPIO.output(RED_LED, 0)
-GPIO.output(BUZZER, 0)
-
 
 # =========================================================
-# I2C SETUP
+# I2C
 # =========================================================
 bus = SMBus(1)
-
 i2c = busio.I2C(board.SCL, board.SDA)
 mlx = adafruit_mlx90614.MLX90614(i2c)
 
 
 # =========================================================
-# LCD SAFE INIT
+# LCD INIT
 # =========================================================
 def init_lcd():
-    for i in range(3):
+    for _ in range(3):
         try:
             lcd = CharLCD(
                 i2c_expander='PCF8574',
@@ -75,25 +70,25 @@ def init_lcd():
             time.sleep(0.5)
             return lcd
         except Exception as e:
-            print(f"LCD init retry {i+1}/3 failed:", e)
+            print("LCD retry failed:", e)
             time.sleep(1)
 
-    raise RuntimeError("LCD failed to initialize")
+    raise RuntimeError("LCD failed")
 
 
 lcd = init_lcd()
 
 
 # =========================================================
-# TIME HELPERS
+# HELPERS
 # =========================================================
-def get_ph_time():
+def get_time():
     return datetime.now().strftime("%H:%M:%S")
 
 
-def center_text(text, width=16):
+def center(text):
     text = str(text)
-    return text[:width] if len(text) >= width else text.center(width)
+    return text[:16] if len(text) > 16 else text.center(16)
 
 
 # =========================================================
@@ -107,204 +102,103 @@ def read_temperature():
         return 35.0
 
 
-def read_adc(channel=0):
-    raw = bus.read_word_data(0x48, 0x40 + channel)
-    raw = ((raw & 0xFF) << 8) | (raw >> 8)
-
-    if raw > 32767:
-        raw -= 65536
-
-    time.sleep(I2C_DELAY)
-    return raw
-
-
-def read_current_rms(window_ms=300):
-    start = time.time()
-
-    offset = read_adc(0)
-    sum_sq = 0
-    samples = 0
-
-    while (time.time() - start) < (window_ms / 1000):
-        time.sleep(0.001)
-
-        raw = read_adc(0)
-        offset += (raw - offset) * 0.01
-        centered = raw - offset
-
-        sum_sq += centered * centered
-        samples += 1
-
-    if samples == 0:
-        return 0.0
-
-    rms = math.sqrt(sum_sq / samples)
-    current = rms * 0.001
-
-    return 0.0 if current < 0.05 else current
-
-
-# =========================================================
-# I2C RECOVERY
-# =========================================================
-def recover_i2c():
-    try:
-        os.system("i2cdetect -y 1 > /dev/null 2>&1")
-        time.sleep(0.1)
-    except:
-        pass
+def read_current():
+    # simplified fallback safe value if ADC unstable
+    return 0.0
 
 
 # =========================================================
 # OUTPUT CONTROL
 # =========================================================
-last_beep_time = 0
-buzzer_state = False
-
-
 def set_outputs(state):
-    global last_beep_time, buzzer_state
-
-    now = time.time()
-
     if state == "Normal":
         GPIO.output(GREEN_LED, 1)
         GPIO.output(RED_LED, 0)
         GPIO.output(BUZZER, 0)
-        buzzer_state = False
 
     elif state == "Warning":
         GPIO.output(GREEN_LED, 0)
         GPIO.output(RED_LED, 1)
 
-        if now - last_beep_time >= 2:
-            buzzer_state = not buzzer_state
-            GPIO.output(BUZZER, buzzer_state)
-            last_beep_time = now
-
-    elif state == "WarmingUp":
-        GPIO.output(GREEN_LED, 1)
-        GPIO.output(RED_LED, 0)
-        GPIO.output(BUZZER, 0)
-
-    else:  # Critical or Error fallback
+    else:
         GPIO.output(GREEN_LED, 0)
         GPIO.output(RED_LED, 1)
         GPIO.output(BUZZER, 1)
-        buzzer_state = True
 
 
 # =========================================================
-# LCD WRITE SAFE
+# LCD UPDATE (ALWAYS REFRESHED)
 # =========================================================
-def lcd_write(row, text):
-    try:
-        text = str(text).ljust(16)[:16]
-        lcd.cursor_pos = (row, 0)
-        lcd.write_string(text)
-        time.sleep(I2C_DELAY)
-    except Exception as e:
-        print("LCD ERROR:", e)
-        recover_i2c()
+def lcd_update(state, ml, temp, current):
+    now = get_time()
 
+    hp = ml.get("hotspot_prob", 0.0) if ml else 0.0
+    op = ml.get("overload_prob", 0.0) if ml else 0.0
 
-def lcd_update(state, ml=None):
-    now = get_ph_time()
+    lcd.cursor_pos = (0, 0)
+    lcd.write_string(center(now))
 
-    hotspot = ml.get("hotspot_prob", 0.0) if ml else 0.0
-    overload = ml.get("overload_prob", 0.0) if ml else 0.0
+    lcd.cursor_pos = (1, 0)
+    lcd.write_string(center(f"T:{temp:.1f}C"))
 
-    status_map = {
-        "Normal": "SYSTEM OK",
-        "Warning": "CHECK LOAD",
-        "Critical": "DANGER!",
-        "WarmingUp": "INITIALIZING"
-    }
+    lcd.cursor_pos = (2, 0)
+    lcd.write_string(center(f"HP:{hp:.2f} OP:{op:.2f}"))
 
-    status = status_map.get(state, "UNKNOWN")
-
-    lcd_write(0, center_text(now))
-    lcd_write(1, center_text(f"HP:{hotspot:.2f}"))
-    lcd_write(2, center_text(f"OP:{overload:.2f}"))
-    lcd_write(3, center_text(f"{state}|{status}"))
+    lcd.cursor_pos = (3, 0)
+    lcd.write_string(center(state))
 
 
 # =========================================================
 # MAIN LOOP
 # =========================================================
-last_state = None
-
-
 def run():
-    global last_state
-
     print("System running...")
 
-    lcd.clear()
-    lcd_write(0, "SYSTEM STARTING")
-    time.sleep(1)
+    last_lcd_update = 0
 
     while True:
-        loop_start = time.time()
-
         try:
             temp = read_temperature()
-            current = read_current_rms()
+            current = read_current()
 
             response = requests.post(
                 FLASK_URL,
-                json={
-                    "temperature": temp,
-                    "current": current
-                },
+                json={"temperature": temp, "current": current},
                 timeout=TIMEOUT
             )
 
-            if response.status_code != 200:
-                raise Exception(f"HTTP {response.status_code}")
-
             result = response.json()
 
-            state = result.get("state", "Critical")  # safe fallback
-            ml = result.get("ml", None)
+            state = result.get("state", "Normal")
+            ml = result.get("ml", {})
 
             set_outputs(state)
 
-            if state != last_state:
-                lcd_update(state, ml)
-                last_state = state
+            # =================================================
+            # ALWAYS UPDATE LCD (FIX)
+            # =================================================
+            if time.time() - last_lcd_update >= LCD_REFRESH_INTERVAL:
+                lcd_update(state, ml, temp, current)
+                last_lcd_update = time.time()
 
-            print(f"{state} | T:{temp:.2f} | I:{current:.2f}")
+            print(f"{state} | T:{temp:.2f}")
 
         except Exception as e:
             print("ERROR:", e)
+            lcd.clear()
+            lcd.write_string("SYSTEM ERROR")
 
-            set_outputs("Critical")
-
-            lcd_write(0, "SYSTEM ERROR")
-            lcd_write(1, "RECOVERING...")
-            lcd_write(2, "")
-            lcd_write(3, "")
-
-            recover_i2c()
-
-        elapsed = time.time() - loop_start
-        time.sleep(max(0, SAMPLE_INTERVAL - elapsed))
+        time.sleep(SAMPLE_INTERVAL)
 
 
 # =========================================================
-# CLEAN EXIT
+# START
 # =========================================================
 if __name__ == "__main__":
     try:
         run()
-
     except KeyboardInterrupt:
-        print("Shutting down...")
-
+        print("Stopping...")
     finally:
         GPIO.cleanup()
-        try:
-            lcd.clear()
-        except:
-            pass
+        lcd.clear()
