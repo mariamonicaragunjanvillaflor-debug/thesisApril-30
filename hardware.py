@@ -14,6 +14,14 @@ import adafruit_mlx90614
 
 
 # -----------------------
+# GLOBAL STABILITY DELAY
+# -----------------------
+time.sleep(2)  # allow I2C devices to settle
+
+I2C_DELAY = 0.02
+
+
+# -----------------------
 # GPIO SETUP
 # -----------------------
 GREEN_LED = 17
@@ -30,21 +38,6 @@ GPIO.setup(BUZZER, GPIO.OUT)
 GPIO.output(GREEN_LED, 0)
 GPIO.output(RED_LED, 0)
 GPIO.output(BUZZER, 0)
-
-
-# -----------------------
-# LCD SETUP
-# -----------------------
-lcd = CharLCD(
-    i2c_expander='PCF8574',
-    address=0x27,
-    port=1,
-    cols=16,
-    rows=4
-)
-
-lcd.clear()
-time.sleep(0.5)
 
 
 # -----------------------
@@ -66,6 +59,31 @@ ADS1115_ADDR = 0x48
 
 
 # -----------------------
+# LCD SAFE INIT
+# -----------------------
+def init_lcd():
+    for i in range(3):
+        try:
+            lcd = CharLCD(
+                i2c_expander='PCF8574',
+                address=0x27,
+                port=1,
+                cols=16,
+                rows=4
+            )
+            lcd.clear()
+            time.sleep(0.5)
+            return lcd
+        except Exception as e:
+            print(f"LCD init retry {i+1}/3 failed:", e)
+            time.sleep(1)
+
+    raise RuntimeError("LCD failed to initialize")
+
+lcd = init_lcd()
+
+
+# -----------------------
 # TIME
 # -----------------------
 def get_ph_time():
@@ -81,7 +99,7 @@ def center_text(text, width=16):
 
 
 # -----------------------
-# ADC READ
+# ADC READ (ADS1115)
 # -----------------------
 def read_adc(channel=0):
     raw = bus.read_word_data(ADS1115_ADDR, 0x40 + channel)
@@ -90,6 +108,7 @@ def read_adc(channel=0):
     if raw > 32767:
         raw -= 65536
 
+    time.sleep(I2C_DELAY)
     return raw
 
 
@@ -127,13 +146,14 @@ def read_current_rms(window_ms=300):
 # -----------------------
 def read_temperature():
     try:
+        time.sleep(I2C_DELAY)
         return mlx.object_temperature
     except:
         return 35.0
 
 
 # -----------------------
-# RECOVERY
+# I2C RECOVERY
 # -----------------------
 def recover_i2c():
     try:
@@ -144,7 +164,7 @@ def recover_i2c():
 
 
 # -----------------------
-# LED + BUZZER CONTROL
+# OUTPUT CONTROL
 # -----------------------
 last_beep_time = 0
 buzzer_state = False
@@ -154,14 +174,12 @@ def set_outputs(state):
 
     current_time = time.time()
 
-    # NORMAL
     if state == "Normal":
         GPIO.output(GREEN_LED, 1)
         GPIO.output(RED_LED, 0)
         GPIO.output(BUZZER, 0)
         buzzer_state = False
 
-    # WARNING (beep every 2 seconds)
     elif state == "Warning":
         GPIO.output(GREEN_LED, 0)
         GPIO.output(RED_LED, 1)
@@ -171,7 +189,6 @@ def set_outputs(state):
             GPIO.output(BUZZER, buzzer_state)
             last_beep_time = current_time
 
-    # ALERT / ERROR (continuous)
     else:
         GPIO.output(GREEN_LED, 0)
         GPIO.output(RED_LED, 1)
@@ -180,13 +197,14 @@ def set_outputs(state):
 
 
 # -----------------------
-# LCD WRITE SAFE
+# LCD SAFE WRITE
 # -----------------------
 def lcd_write(row, text):
     try:
-        text = (str(text) + " " * 16)[:16]
+        text = str(text).ljust(16)[:16]
         lcd.cursor_pos = (row, 0)
         lcd.write_string(text)
+        time.sleep(I2C_DELAY)
     except Exception as e:
         print("LCD ERROR:", e)
         recover_i2c()
@@ -201,27 +219,25 @@ def lcd_update(state, ml=None):
     hotspot = ml.get("hotspot_prob", 0.0) if ml else 0.0
     overload = ml.get("overload_prob", 0.0) if ml else 0.0
 
-    line1 = center_text(ph_time)
-    line2 = center_text(f"HP:{hotspot:.2f}")
-    line3 = center_text(f"OP:{overload:.2f}")
-
     status = {
         "Normal": "SYSTEM OK",
         "Warning": "CHECK LOAD"
     }.get(state, "ALERT")
 
-    line4 = center_text(f"{state}|{status}")
-
-    lcd_write(0, line1)
-    lcd_write(1, line2)
-    lcd_write(2, line3)
-    lcd_write(3, line4)
+    lcd_write(0, center_text(ph_time))
+    lcd_write(1, center_text(f"HP:{hotspot:.2f}"))
+    lcd_write(2, center_text(f"OP:{overload:.2f}"))
+    lcd_write(3, center_text(f"{state}|{status}"))
 
 
 # -----------------------
 # MAIN LOOP
 # -----------------------
+last_state = None
+
 def run():
+    global last_state
+
     print("System running...")
 
     lcd.clear()
@@ -231,7 +247,10 @@ def run():
     while True:
         try:
             temp = read_temperature()
+            time.sleep(I2C_DELAY)
+
             current = read_current_rms()
+            time.sleep(I2C_DELAY)
 
             response = requests.post(
                 FLASK_URL,
@@ -251,7 +270,11 @@ def run():
             ml = result.get("ml", None)
 
             set_outputs(state)
-            lcd_update(state, ml)
+
+            # Only update LCD if state changes (prevents I2C spam)
+            if state != last_state:
+                lcd_update(state, ml)
+                last_state = state
 
             print(f"{state} | T:{temp:.2f} | I:{current:.2f}")
 
@@ -282,4 +305,7 @@ if __name__ == "__main__":
 
     finally:
         GPIO.cleanup()
-        lcd.clear()
+        try:
+            lcd.clear()
+        except:
+            pass
