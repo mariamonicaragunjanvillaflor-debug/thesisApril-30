@@ -4,11 +4,7 @@ import os
 from flask_cors import CORS
 from datetime import datetime
 
-from feature_engine import (
-    build_basic_features,
-    temp_buffer,
-    current_buffer
-)
+from feature_engine import build_basic_features, temp_buffer
 
 # =========================================================
 # INIT
@@ -26,35 +22,30 @@ print("🔥 INITIALIZING SYSTEM...")
 # =========================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-hotspot_model = joblib.load(
-    os.path.join(BASE_DIR, "ml/hotspot_model.pkl")
-)
-
-overload_model = joblib.load(
-    os.path.join(BASE_DIR, "ml/overload_model.pkl")
-)
+hotspot_model = joblib.load(os.path.join(BASE_DIR, "ml/hotspot_model.pkl"))
+overload_model = joblib.load(os.path.join(BASE_DIR, "ml/overload_model.pkl"))
 
 print("✓ Models loaded successfully")
 
 
 # =========================================================
 # FEATURE LOCK
-# Ensures training/inference consistency
 # =========================================================
 FEATURE_COLUMNS = hotspot_model.feature_names_in_.tolist()
 
 print("✓ Feature lock loaded")
-print("Total features:", len(FEATURE_COLUMNS))
 
 
 # =========================================================
-# SYSTEM CONFIG
+# THRESHOLDS (ENGINEERING BASED)
 # =========================================================
-WARMUP_SAMPLES = 10
+TEMP_NORMAL_MAX = 45
+TEMP_WARNING_MIN = 55
+TEMP_WARNING_MAX = 60
+TEMP_CRITICAL = 70
 
-# ML thresholds
-WARNING_THRESHOLD = 0.60
-CRITICAL_THRESHOLD = 0.85
+ML_WARNING = 0.60
+ML_CRITICAL = 0.85
 
 
 # =========================================================
@@ -66,86 +57,61 @@ def update_data():
     global latest_data_store
 
     try:
-        # =================================================
-        # RECEIVE SENSOR DATA
-        # =================================================
         data = request.json
 
         temp = float(data["temperature"])
         current = float(data["current"])
 
         # =================================================
-        # FEATURE ENGINE
-        # IMPORTANT:
-        # Uses SAME feature_engine.py from training
+        # 🔥 HARD PHYSICS SAFETY LAYER (MOST IMPORTANT FIX)
         # =================================================
-        X = build_basic_features(temp, current)
-
-        # =================================================
-        # FORCE TRAINING COLUMN ORDER
-        # Prevents feature mismatch
-        # =================================================
-        X = X.reindex(columns=FEATURE_COLUMNS, fill_value=0)
-
-        # =================================================
-        # ML PREDICTION
-        # =================================================
-        hot_prob = hotspot_model.predict_proba(X)[0][1]
-        ovl_prob = overload_model.predict_proba(X)[0][1]
-
-        composite_risk = (hot_prob + ovl_prob) / 2
-
-        # =================================================
-        # ENGINEERING STATE LOGIC
-        # =================================================
-
-        # ---------------------------------------------
-        # WARMUP
-        # ---------------------------------------------
-        if len(temp_buffer) < WARMUP_SAMPLES:
-
-            state = "WarmingUp"
-            status = "COLLECTING DATA"
-
-        # ---------------------------------------------
-        # CRITICAL
-        # ---------------------------------------------
-        elif hot_prob >= CRITICAL_THRESHOLD:
-
-            state = "Critical"
-            status = "HOTSPOT CRITICAL"
-
-        elif ovl_prob >= CRITICAL_THRESHOLD:
-
-            state = "Critical"
-            status = "OVERLOAD CRITICAL"
-
-        # ---------------------------------------------
-        # WARNING
-        # ---------------------------------------------
-        elif hot_prob >= WARNING_THRESHOLD:
-
-            state = "Warning"
-            status = "HOTSPOT WARNING"
-
-        elif ovl_prob >= WARNING_THRESHOLD:
-
-            state = "Warning"
-            status = "OVERLOAD WARNING"
-
-        # ---------------------------------------------
-        # NORMAL
-        # ---------------------------------------------
-        else:
-
+        if temp < TEMP_NORMAL_MAX:
             state = "Normal"
-            status = "SYSTEM NORMAL"
+            status = "SAFE TEMPERATURE"
+
+            hot_prob = 0.0
+            ovl_prob = 0.0
+
+        elif temp >= TEMP_CRITICAL:
+            state = "Critical"
+            status = "OVERHEATING (TEMP LIMIT)"
+
+            hot_prob = 1.0
+            ovl_prob = 0.0
+
+        else:
+            # =================================================
+            # ML ONLY IN MID-RANGE (55–70°C)
+            # =================================================
+            X = build_basic_features(temp, current)
+            X = X.reindex(columns=FEATURE_COLUMNS, fill_value=0)
+
+            hot_prob = hotspot_model.predict_proba(X)[0][1]
+            ovl_prob = overload_model.predict_proba(X)[0][1]
+
+            # =================================================
+            # STATE DECISION (ML-GUIDED)
+            # =================================================
+            if hot_prob >= ML_CRITICAL or ovl_prob >= ML_CRITICAL:
+                state = "Critical"
+                status = "ML CRITICAL RISK"
+
+            elif hot_prob >= ML_WARNING:
+                state = "Warning"
+                status = "EARLY HOTSPOT WARNING"
+
+            elif ovl_prob >= ML_WARNING:
+                state = "Warning"
+                status = "EARLY OVERLOAD WARNING"
+
+            else:
+                state = "Normal"
+                status = "STABLE MID-RANGE"
 
         # =================================================
-        # STORE LATEST DATA
+        # STORE DATA
         # =================================================
         latest_data_store = {
-
             "temperature": round(temp, 2),
             "current": round(current, 2),
 
@@ -153,44 +119,31 @@ def update_data():
             "status": status,
 
             "ml": {
-                "hotspot_prob": round(float(hot_prob), 4),
-                "overload_prob": round(float(ovl_prob), 4),
-                "composite_risk": round(float(composite_risk), 4)
+                "hotspot_prob": float(round(hot_prob, 4)),
+                "overload_prob": float(round(ovl_prob, 4)),
+                "composite_risk": float(round((hot_prob + ovl_prob) / 2, 4))
             },
-
-            "buffer_size": len(temp_buffer),
 
             "time": datetime.now().strftime("%H:%M:%S")
         }
 
         # =================================================
-        # DEBUG PRINT
+        # DEBUG LOG
         # =================================================
         print(
             f"[{state}] "
-            f"T={temp:.2f}C | "
-            f"I={current:.2f}A | "
-            f"HP={hot_prob:.3f} | "
-            f"OP={ovl_prob:.3f}"
+            f"T={temp:.2f}C | I={current:.2f}A | "
+            f"HP={hot_prob:.3f} | OP={ovl_prob:.3f}"
         )
 
-        # =================================================
-        # RESPONSE
-        # =================================================
         return jsonify({
             "success": True,
             "state": state,
             "status": status,
-
-            "ml": {
-                "hotspot_prob": round(float(hot_prob), 4),
-                "overload_prob": round(float(ovl_prob), 4),
-                "composite_risk": round(float(composite_risk), 4)
-            }
+            "ml": latest_data_store["ml"]
         })
 
     except Exception as e:
-
         print("API ERROR:", e)
 
         return jsonify({
@@ -200,7 +153,7 @@ def update_data():
 
 
 # =========================================================
-# WEB ROUTES
+# ROUTES
 # =========================================================
 @app.route("/")
 def index():
@@ -212,30 +165,17 @@ def latest():
     return jsonify(latest_data_store)
 
 
-# =========================================================
-# HEALTH CHECK
-# =========================================================
 @app.route("/api/health")
 def health():
     return jsonify({
         "status": "online",
-        "models_loaded": True,
-        "buffer_size": len(temp_buffer)
+        "models_loaded": True
     })
 
 
 # =========================================================
-# RUN SERVER
+# RUN
 # =========================================================
 if __name__ == "__main__":
-
-    print("===================================")
-    print("⚡ SMART PANEL MONITORING SYSTEM")
-    print("🔥 Predictive ML Protection Enabled")
-    print("===================================")
-
-    app.run(
-        host="0.0.0.0",
-        port=5000,
-        debug=False
-    )
+    print("⚡ SMART PANEL SYSTEM STARTED")
+    app.run(host="0.0.0.0", port=5000, debug=False)
