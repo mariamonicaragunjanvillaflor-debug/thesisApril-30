@@ -4,7 +4,7 @@ import os
 from flask_cors import CORS
 from datetime import datetime
 
-from feature_engine import build_basic_features, temp_buffer
+from feature_engine import build_basic_features
 
 # =========================================================
 # INIT
@@ -33,19 +33,38 @@ print("✓ Models loaded successfully")
 # =========================================================
 FEATURE_COLUMNS = hotspot_model.feature_names_in_.tolist()
 
-print("✓ Feature lock loaded")
-
 
 # =========================================================
-# THRESHOLDS (ENGINEERING BASED)
+# ENGINEERING THRESHOLDS
 # =========================================================
-TEMP_NORMAL_MAX = 45
-TEMP_WARNING_MIN = 55
-TEMP_WARNING_MAX = 60
 TEMP_CRITICAL = 70
 
-ML_WARNING = 0.60
-ML_CRITICAL = 0.85
+ML_WARNING = 0.55
+ML_CRITICAL = 0.75
+
+
+# =========================================================
+# DECISION ENGINE (CENTRAL LOGIC)
+# =========================================================
+def decide_state(temp, hot_prob, ovl_prob):
+
+    # HARD SAFETY OVERRIDE
+    if temp >= TEMP_CRITICAL:
+        return "Critical", "TEMPERATURE LIMIT EXCEEDED"
+
+    # ML CRITICAL
+    if hot_prob >= ML_CRITICAL or ovl_prob >= ML_CRITICAL:
+        return "Critical", "HIGH RISK DETECTED"
+
+    # WARNING ZONE
+    if hot_prob >= ML_WARNING or ovl_prob >= ML_WARNING:
+        return "Warning", "EARLY RISK DETECTED"
+
+    # EARLY SIGNAL (important for predictive behavior)
+    if hot_prob >= 0.30 or ovl_prob >= 0.30:
+        return "EarlyWarning", "TREND DETECTED"
+
+    return "Normal", "SYSTEM STABLE"
 
 
 # =========================================================
@@ -63,53 +82,26 @@ def update_data():
         current = float(data["current"])
 
         # =================================================
-        # 🔥 HARD PHYSICS SAFETY LAYER (MOST IMPORTANT FIX)
+        # 🔥 ALWAYS RUN FEATURE ENGINE
         # =================================================
-        if temp < TEMP_NORMAL_MAX:
-            state = "Normal"
-            status = "SAFE TEMPERATURE"
-
-            hot_prob = 0.0
-            ovl_prob = 0.0
-
-        elif temp >= TEMP_CRITICAL:
-            state = "Critical"
-            status = "OVERHEATING (TEMP LIMIT)"
-
-            hot_prob = 1.0
-            ovl_prob = 0.0
-
-        else:
-            # =================================================
-            # ML ONLY IN MID-RANGE (55–70°C)
-            # =================================================
-            X = build_basic_features(temp, current)
-            X = X.reindex(columns=FEATURE_COLUMNS, fill_value=0)
-
-            hot_prob = hotspot_model.predict_proba(X)[0][1]
-            ovl_prob = overload_model.predict_proba(X)[0][1]
-
-            # =================================================
-            # STATE DECISION (ML-GUIDED)
-            # =================================================
-            if hot_prob >= ML_CRITICAL or ovl_prob >= ML_CRITICAL:
-                state = "Critical"
-                status = "ML CRITICAL RISK"
-
-            elif hot_prob >= ML_WARNING:
-                state = "Warning"
-                status = "EARLY HOTSPOT WARNING"
-
-            elif ovl_prob >= ML_WARNING:
-                state = "Warning"
-                status = "EARLY OVERLOAD WARNING"
-
-            else:
-                state = "Normal"
-                status = "STABLE MID-RANGE"
+        X = build_basic_features(temp, current)
+        X = X.reindex(columns=FEATURE_COLUMNS, fill_value=0)
 
         # =================================================
-        # STORE DATA
+        # 🔥 ALWAYS RUN ML (IMPORTANT FIX)
+        # =================================================
+        hot_prob = float(hotspot_model.predict_proba(X)[0][1])
+        ovl_prob = float(overload_model.predict_proba(X)[0][1])
+
+        # =================================================
+        # DECISION LAYER
+        # =================================================
+        state, status = decide_state(temp, hot_prob, ovl_prob)
+
+        composite_risk = (hot_prob + ovl_prob) / 2
+
+        # =================================================
+        # STORE RESULT
         # =================================================
         latest_data_store = {
             "temperature": round(temp, 2),
@@ -119,9 +111,9 @@ def update_data():
             "status": status,
 
             "ml": {
-                "hotspot_prob": float(round(hot_prob, 4)),
-                "overload_prob": float(round(ovl_prob, 4)),
-                "composite_risk": float(round((hot_prob + ovl_prob) / 2, 4))
+                "hotspot_prob": round(hot_prob, 4),
+                "overload_prob": round(ovl_prob, 4),
+                "composite_risk": round(composite_risk, 4)
             },
 
             "time": datetime.now().strftime("%H:%M:%S")
