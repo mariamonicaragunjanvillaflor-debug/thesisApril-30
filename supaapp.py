@@ -1,47 +1,58 @@
 from supabase import create_client
-import random
+from datetime import datetime
 import time
 
-# Your Supabase credentials
+# =========================================================
+# SUPABASE
+# =========================================================
 SUPABASE_URL = "YOUR_SUPABASE_URL"
 SUPABASE_KEY = "YOUR_SUPABASE_ANON_KEY"
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+
+# =========================================================
+# MAIN LOOP
+# =========================================================
 while True:
 
-    # Sample sensor values
-    temperature_c = random.uniform(30, 90)
-    current_a = random.uniform(5, 30)
+    # 1. READ REAL SENSORS
+    temp = read_temperature()
+    current = read_current_rms()
 
-    # Example AI prediction values
-    overload_probability = random.uniform(0, 1)
-    hotspot_probability = random.uniform(0, 1)
+    if temp is None or current is None:
+        continue
 
-    # Composite risk calculation
-    composite_risk = (
-        overload_probability + hotspot_probability
-    ) / 2
+    # 2. ML INPUT
+    X = [[temp, current]]
 
-    # Breaker logic
-    breaker_state = "NORMAL"
+    # 3. ML PREDICTIONS
+    hot_prob = hotspot_model.predict_proba(X)[0][1]
+    ovl_prob = overload_model.predict_proba(X)[0][1]
 
-    if composite_risk > 0.7:
-        breaker_state = "WARNING"
+    # 4. RISK COMPUTATION
+    composite = (hot_prob + ovl_prob) / 2
 
-    if composite_risk > 0.9:
-        breaker_state = "TRIPPED"
+    # 5. BREAKER STATE
+    if composite > 0.9:
+        state = "TRIPPED"
+    elif composite > 0.7:
+        state = "WARNING"
+    else:
+        state = "NORMAL"
 
-    # Insert into Supabase
+    # 6. DATA PACKAGE
     data = {
-        "temperature_c": temperature_c,
-        "current_a": current_a,
-        "breaker_state": breaker_state,
-        "overload_probability": overload_probability,
-        "hotspot_probability": hotspot_probability,
-        "composite_risk": composite_risk
+        "created_at": datetime.now().isoformat(),
+        "temperature_c": temp,
+        "current_a": current,
+        "breaker_state": state,
+        "hotspot_probability": hot_prob,
+        "overload_probability": ovl_prob,
+        "composite_risk": composite
     }
 
+    # 7. SEND TO SUPABASE
     response = (
         supabase
         .table("breaker_readings")
@@ -49,6 +60,6 @@ while True:
         .execute()
     )
 
-    print("Uploaded:", data)
+    print("Uploaded:", response.data)
 
     time.sleep(5)
