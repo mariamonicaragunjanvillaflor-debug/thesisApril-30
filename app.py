@@ -32,53 +32,63 @@ print("✓ Models loaded successfully")
 # FEATURE LOCK
 # =========================================================
 FEATURE_COLUMNS = hotspot_model.feature_names_in_.tolist()
-
 print("✓ Feature lock loaded")
 
 
 # =========================================================
 # THRESHOLDS
 # =========================================================
+TEMP_NORMAL_MAX = 45
+TEMP_WARNING_MIN = 55
 TEMP_CRITICAL = 70
 
-ML_EARLY = 0.40
-ML_WARNING = 0.60
-ML_CRITICAL = 0.80
+ML_EARLY = 0.45
+ML_WARNING = 0.65
+ML_CRITICAL = 0.85
 
 
 # =========================================================
-# DECISION ENGINE (FULL PREDICTIVE)
+# DECISION ENGINE
 # =========================================================
 def decide_state(temp, current, hot_prob, ovl_prob):
 
-    # -----------------------------------------------------
-    # CRITICAL SAFETY OVERRIDE (ONLY HARD LIMIT)
-    # -----------------------------------------------------
+    # HARD SAFETY OVERRIDE
     if temp >= TEMP_CRITICAL:
         return "Critical", "TEMP LIMIT EXCEEDED"
 
-    # -----------------------------------------------------
-    # CRITICAL ML CONDITION
-    # -----------------------------------------------------
+    # LOW TEMP REGION
+    if temp < TEMP_NORMAL_MAX:
+
+        if hot_prob >= ML_WARNING and current > 5:
+            return "EarlyWarning", "UNUSUAL THERMAL TREND"
+
+        if ovl_prob >= ML_WARNING and current > 10:
+            return "EarlyWarning", "CURRENT TREND DETECTED"
+
+        return "Normal", "SYSTEM STABLE"
+
+    # MID TEMP REGION
+    if TEMP_NORMAL_MAX <= temp < TEMP_WARNING_MIN:
+
+        if hot_prob >= ML_CRITICAL or ovl_prob >= ML_CRITICAL:
+            return "Critical", "HIGH RISK"
+
+        if hot_prob >= ML_WARNING or ovl_prob >= ML_WARNING:
+            return "Warning", "ABNORMAL CONDITION"
+
+        if hot_prob >= ML_EARLY or ovl_prob >= ML_EARLY:
+            return "EarlyWarning", "EARLY TREND"
+
+        return "Normal", "STABLE MID RANGE"
+
+    # HIGH TEMP REGION
     if hot_prob >= ML_CRITICAL or ovl_prob >= ML_CRITICAL:
         return "Critical", "HIGH RISK DETECTED"
 
-    # -----------------------------------------------------
-    # WARNING LEVEL
-    # -----------------------------------------------------
     if hot_prob >= ML_WARNING or ovl_prob >= ML_WARNING:
-        return "Warning", "ABNORMAL CONDITION"
+        return "Warning", "ELEVATED RISK"
 
-    # -----------------------------------------------------
-    # EARLY WARNING (IMPORTANT FOR PREDICTION)
-    # -----------------------------------------------------
-    if hot_prob >= ML_EARLY or ovl_prob >= ML_EARLY:
-        return "EarlyWarning", "EARLY RISK DETECTED"
-
-    # -----------------------------------------------------
-    # NORMAL (ONLY IF MODEL SAYS SAFE)
-    # -----------------------------------------------------
-    return "Normal", "SYSTEM STABLE"
+    return "EarlyWarning", "ELEVATED TEMPERATURE"
 
 
 # =========================================================
@@ -90,58 +100,45 @@ def update_data():
     global latest_data_store
 
     try:
+        # RECEIVE DATA
         data = request.json
-
         temp = float(data["temperature"])
         current = float(data["current"])
 
-        # =================================================
-        # FEATURE ENGINE (STATEFUL)
-        # =================================================
+        # FEATURE ENGINE
         X = build_basic_features(temp, current)
         X = X.reindex(columns=FEATURE_COLUMNS, fill_value=0)
 
-        # =================================================
-        # ALWAYS RUN ML (NO EXCEPTIONS)
-        # =================================================
+        # ML PREDICTIONS (ALWAYS RUN)
         hot_prob = float(hotspot_model.predict_proba(X)[0][1])
         ovl_prob = float(overload_model.predict_proba(X)[0][1])
 
-        # =================================================
         # DECISION
-        # =================================================
         state, status = decide_state(temp, current, hot_prob, ovl_prob)
 
         composite_risk = (hot_prob + ovl_prob) / 2
 
-        # =================================================
-        # STORE
-        # =================================================
+        # STORE DATA
         latest_data_store = {
             "temperature": round(temp, 2),
             "current": round(current, 2),
-
             "breakerState": state,
             "status": status,
-
             "ml": {
                 "hotspot_prob": round(hot_prob, 4),
                 "overload_prob": round(ovl_prob, 4),
                 "composite_risk": round(composite_risk, 4)
             },
-
             "time": datetime.now().strftime("%H:%M:%S")
         }
 
-        # =================================================
-        # DEBUG LOG
-        # =================================================
+        # =====================================================
+        # DEBUG PRINT (YOUR REQUESTED FORMAT)
+        # =====================================================
         print(
             f"[{state}] "
-            f"T={temp:.2f}C | "
-            f"I={current:.2f}A | "
-            f"HP={hot_prob:.3f} | "
-            f"OP={ovl_prob:.3f}"
+            f"T={temp:.2f} I={current:.2f} "
+            f"HP={hot_prob:.3f} OP={ovl_prob:.3f}"
         )
 
         return jsonify({
@@ -153,7 +150,11 @@ def update_data():
 
     except Exception as e:
         print("API ERROR:", e)
-        return jsonify({"success": False, "error": str(e)})
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        })
 
 
 # =========================================================
@@ -181,6 +182,9 @@ def health():
 # RUN
 # =========================================================
 if __name__ == "__main__":
+    print("===================================")
     print("⚡ SMART PANEL MONITORING SYSTEM")
-    print("🔥 Predictive ML Enabled")
+    print("🔥 ML + Physics Hybrid System Active")
+    print("===================================")
+
     app.run(host="0.0.0.0", port=5000, debug=False)
