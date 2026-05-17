@@ -1,3 +1,4 @@
+from hardware import read_temperature, read_current
 from supabase import create_client
 from datetime import datetime
 import time
