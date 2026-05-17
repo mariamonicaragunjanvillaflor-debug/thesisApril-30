@@ -22,8 +22,13 @@ print("🔥 INITIALIZING SYSTEM...")
 # =========================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-hotspot_model = joblib.load(os.path.join(BASE_DIR, "ml/hotspot_model.pkl"))
-overload_model = joblib.load(os.path.join(BASE_DIR, "ml/overload_model.pkl"))
+hotspot_model = joblib.load(
+    os.path.join(BASE_DIR, "ml/hotspot_model.pkl")
+)
+
+overload_model = joblib.load(
+    os.path.join(BASE_DIR, "ml/overload_model.pkl")
+)
 
 print("✓ Models loaded successfully")
 
@@ -33,38 +38,87 @@ print("✓ Models loaded successfully")
 # =========================================================
 FEATURE_COLUMNS = hotspot_model.feature_names_in_.tolist()
 
+print("✓ Feature lock loaded")
+
 
 # =========================================================
 # ENGINEERING THRESHOLDS
 # =========================================================
+
+# PHYSICAL SAFETY LIMITS
+TEMP_NORMAL_MAX = 45
+TEMP_WARNING_MIN = 55
 TEMP_CRITICAL = 70
 
-ML_WARNING = 0.55
-ML_CRITICAL = 0.75
+# ML PROBABILITY THRESHOLDS
+ML_EARLY = 0.45
+ML_WARNING = 0.65
+ML_CRITICAL = 0.85
 
 
 # =========================================================
-# DECISION ENGINE (CENTRAL LOGIC)
+# DECISION ENGINE
 # =========================================================
-def decide_state(temp, hot_prob, ovl_prob):
+def decide_state(temp, current, hot_prob, ovl_prob):
 
+    # =====================================================
     # HARD SAFETY OVERRIDE
+    # =====================================================
     if temp >= TEMP_CRITICAL:
-        return "Critical", "TEMPERATURE LIMIT EXCEEDED"
+        return "Critical", "TEMP LIMIT EXCEEDED"
 
-    # ML CRITICAL
+    # =====================================================
+    # VERY LOW TEMP REGION
+    # Prevent false positives in cool temperatures
+    # =====================================================
+    if temp < TEMP_NORMAL_MAX:
+
+        # Only allow EARLY warning in low temps
+        if hot_prob >= ML_WARNING and current > 5:
+            return "EarlyWarning", "UNUSUAL THERMAL TREND"
+
+        if ovl_prob >= ML_WARNING and current > 10:
+            return "EarlyWarning", "CURRENT TREND DETECTED"
+
+        return "Normal", "SYSTEM STABLE"
+
+    # =====================================================
+    # MID TEMP REGION (45C - 55C)
+    # ML starts becoming important
+    # =====================================================
+    if TEMP_NORMAL_MAX <= temp < TEMP_WARNING_MIN:
+
+        if hot_prob >= ML_CRITICAL:
+            return "Critical", "HOTSPOT RISK"
+
+        if ovl_prob >= ML_CRITICAL:
+            return "Critical", "OVERLOAD RISK"
+
+        if hot_prob >= ML_WARNING:
+            return "Warning", "THERMAL WARNING"
+
+        if ovl_prob >= ML_WARNING:
+            return "Warning", "OVERLOAD WARNING"
+
+        if hot_prob >= ML_EARLY:
+            return "EarlyWarning", "THERMAL TREND"
+
+        if ovl_prob >= ML_EARLY:
+            return "EarlyWarning", "CURRENT TREND"
+
+        return "Normal", "SYSTEM STABLE"
+
+    # =====================================================
+    # HIGH TEMP REGION (55C+)
+    # Aggressive protection zone
+    # =====================================================
     if hot_prob >= ML_CRITICAL or ovl_prob >= ML_CRITICAL:
         return "Critical", "HIGH RISK DETECTED"
 
-    # WARNING ZONE
     if hot_prob >= ML_WARNING or ovl_prob >= ML_WARNING:
-        return "Warning", "EARLY RISK DETECTED"
+        return "Warning", "ABNORMAL CONDITION"
 
-    # EARLY SIGNAL (important for predictive behavior)
-    if hot_prob >= 0.30 or ovl_prob >= 0.30:
-        return "EarlyWarning", "TREND DETECTED"
-
-    return "Normal", "SYSTEM STABLE"
+    return "EarlyWarning", "ELEVATED TEMPERATURE"
 
 
 # =========================================================
@@ -76,27 +130,43 @@ def update_data():
     global latest_data_store
 
     try:
+
+        # =================================================
+        # RECEIVE SENSOR DATA
+        # =================================================
         data = request.json
 
         temp = float(data["temperature"])
         current = float(data["current"])
 
         # =================================================
-        # 🔥 ALWAYS RUN FEATURE ENGINE
+        # FEATURE ENGINE
         # =================================================
         X = build_basic_features(temp, current)
+
+        # force same training order
         X = X.reindex(columns=FEATURE_COLUMNS, fill_value=0)
 
         # =================================================
-        # 🔥 ALWAYS RUN ML (IMPORTANT FIX)
+        # ML PREDICTION
         # =================================================
-        hot_prob = float(hotspot_model.predict_proba(X)[0][1])
-        ovl_prob = float(overload_model.predict_proba(X)[0][1])
+        hot_prob = float(
+            hotspot_model.predict_proba(X)[0][1]
+        )
+
+        ovl_prob = float(
+            overload_model.predict_proba(X)[0][1]
+        )
 
         # =================================================
-        # DECISION LAYER
+        # DECISION ENGINE
         # =================================================
-        state, status = decide_state(temp, hot_prob, ovl_prob)
+        state, status = decide_state(
+            temp,
+            current,
+            hot_prob,
+            ovl_prob
+        )
 
         composite_risk = (hot_prob + ovl_prob) / 2
 
@@ -104,6 +174,7 @@ def update_data():
         # STORE RESULT
         # =================================================
         latest_data_store = {
+
             "temperature": round(temp, 2),
             "current": round(current, 2),
 
@@ -124,10 +195,15 @@ def update_data():
         # =================================================
         print(
             f"[{state}] "
-            f"T={temp:.2f}C | I={current:.2f}A | "
-            f"HP={hot_prob:.3f} | OP={ovl_prob:.3f}"
+            f"T={temp:.2f}C | "
+            f"I={current:.2f}A | "
+            f"HP={hot_prob:.3f} | "
+            f"OP={ovl_prob:.3f}"
         )
 
+        # =================================================
+        # RESPONSE
+        # =================================================
         return jsonify({
             "success": True,
             "state": state,
@@ -136,6 +212,7 @@ def update_data():
         })
 
     except Exception as e:
+
         print("API ERROR:", e)
 
         return jsonify({
@@ -169,5 +246,14 @@ def health():
 # RUN
 # =========================================================
 if __name__ == "__main__":
-    print("⚡ SMART PANEL SYSTEM STARTED")
-    app.run(host="0.0.0.0", port=5000, debug=False)
+
+    print("===================================")
+    print("⚡ SMART PANEL MONITORING SYSTEM")
+    print("🔥 Predictive ML Protection Enabled")
+    print("===================================")
+
+    app.run(
+        host="0.0.0.0",
+        port=5000,
+        debug=False
+    )
