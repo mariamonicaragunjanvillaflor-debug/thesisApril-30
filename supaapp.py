@@ -3,10 +3,10 @@ from datetime import datetime
 import time
 
 # =========================================================
-# SUPABASE
+# SUPABASE (FILLED IN)
 # =========================================================
-SUPABASE_URL = "YOUR_SUPABASE_URL"
-SUPABASE_KEY = "YOUR_SUPABASE_ANON_KEY"
+SUPABASE_URL = "https://qkniqwgcwvxkgjciccad.supabase.co"
+SUPABASE_KEY = "sb_publishable_pzHW1LlymSCVL876qchBKw_pPY0xN-2"
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
