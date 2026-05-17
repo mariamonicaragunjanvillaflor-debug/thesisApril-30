@@ -22,10 +22,6 @@ I2C_RECOVERY_INTERVAL = 10
 FLASK_URL = "http://127.0.0.1:5000/api/update"
 TIMEOUT = 2
 
-
-# =========================================================
-# INIT DELAY
-# =========================================================
 time.sleep(2)
 
 
@@ -45,25 +41,26 @@ GPIO.setup(BUZZER, GPIO.OUT)
 
 
 # =========================================================
-# I2C SETUP (SAFE INIT FUNCTION)
+# SAFE MLX INIT (IMPORTANT FIX)
 # =========================================================
-bus = SMBus(1)
-
+mlx = None
 
 def init_mlx():
+    global mlx
     try:
         i2c = busio.I2C(board.SCL, board.SDA)
-        return adafruit_mlx90614.MLX90614(i2c)
+        mlx = adafruit_mlx90614.MLX90614(i2c)
+        print("✔ MLX initialized")
     except Exception as e:
         print("MLX INIT FAILED:", e)
-        return None
+        mlx = None
 
 
-mlx = init_mlx()
+init_mlx()
 
 
 # =========================================================
-# LCD INIT (SAFE RETRY)
+# LCD INIT
 # =========================================================
 def init_lcd():
     for i in range(3):
@@ -101,27 +98,25 @@ def center(text):
 
 
 # =========================================================
-# SAFE MLX READ (CRITICAL FIX)
+# SAFE TEMP READ (FIXED)
 # =========================================================
 def read_temperature():
     global mlx
 
     try:
         if mlx is None:
-            mlx = init_mlx()
+            init_mlx()
 
         return float(mlx.object_temperature)
 
     except Exception as e:
         print("MLX ERROR:", e)
-
-        # HARD RESET SENSOR
-        mlx = init_mlx()
+        init_mlx()
         return 35.0
 
 
 # =========================================================
-# CURRENT (SAFE PLACEHOLDER)
+# CURRENT (placeholder)
 # =========================================================
 def read_current():
     return 0.0
@@ -147,14 +142,15 @@ def set_outputs(state):
 
 
 # =========================================================
-# LCD UPDATE (SAFE)
+# LCD UPDATE (STABLE)
 # =========================================================
 def lcd_update(state, ml, temp, current):
     try:
         now = get_time()
 
-        hp = ml.get("hotspot_prob", 0.0) if ml else 0.0
-        op = ml.get("overload_prob", 0.0) if ml else 0.0
+        hp = ml.get("hotspot_prob", 0.0)
+        op = ml.get("overload_prob", 0.0)
+        cr = ml.get("composite_risk", 0.0)
 
         lcd.cursor_pos = (0, 0)
         lcd.write_string(center(now))
@@ -166,7 +162,7 @@ def lcd_update(state, ml, temp, current):
         lcd.write_string(center(f"HP:{hp:.2f} OP:{op:.2f}"))
 
         lcd.cursor_pos = (3, 0)
-        lcd.write_string(center(state))
+        lcd.write_string(center(f"{state} {cr:.2f}"))
 
     except Exception as e:
         print("LCD ERROR:", e)
@@ -182,7 +178,6 @@ def lcd_update(state, ml, temp, current):
 def recover_i2c():
     try:
         os.system("i2cdetect -y 1 > /dev/null 2>&1")
-        time.sleep(0.1)
     except:
         pass
 
@@ -193,10 +188,8 @@ def recover_i2c():
 def run():
     print("System running...")
 
-    last_lcd_update = 0
-    last_i2c_recovery = time.time()
-
-    first_run = True
+    last_lcd = 0
+    last_recovery = time.time()
 
     while True:
         try:
@@ -218,18 +211,26 @@ def run():
 
             now = time.time()
 
-            # LCD refresh
-            if first_run or (now - last_lcd_update >= LCD_REFRESH_INTERVAL):
+            # LCD update
+            if now - last_lcd >= LCD_REFRESH_INTERVAL:
                 lcd_update(state, ml, temp, current)
-                last_lcd_update = now
-                first_run = False
+                last_lcd = now
 
-            # periodic I2C recovery (IMPORTANT FIX)
-            if now - last_i2c_recovery >= I2C_RECOVERY_INTERVAL:
+            # =====================================================
+            # 🔥 THIS IS WHAT YOU ASKED (RPi MONITOR OUTPUT)
+            # =====================================================
+            print(
+                f"[{state}] "
+                f"T:{temp:.2f} I:{current:.2f} "
+                f"HP:{ml.get('hotspot_prob', 0):.3f} "
+                f"OP:{ml.get('overload_prob', 0):.3f} "
+                f"CR:{ml.get('composite_risk', 0):.3f}"
+            )
+
+            # periodic recovery
+            if now - last_recovery > I2C_RECOVERY_INTERVAL:
                 recover_i2c()
-                last_i2c_recovery = now
-
-            print(f"{state} | T:{temp:.2f} | I:{current:.2f}")
+                last_recovery = now
 
         except Exception as e:
             print("SYSTEM ERROR:", e)
