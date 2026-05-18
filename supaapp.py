@@ -16,8 +16,8 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # LOAD ML MODELS
 # (Make sure these .pkl files exist in your folder)
 # =========================================================
-hotspot_model = joblib.load("hotspot_model.pkl")
-overload_model = joblib.load("overload_model.pkl")
+hotspot_model = joblib.load("ml/hotspot_model.pkl")
+overload_model = joblib.load("ml/overload_model.pkl")
 
 
 # =========================================================
