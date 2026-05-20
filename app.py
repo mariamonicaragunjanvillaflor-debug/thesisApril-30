@@ -166,13 +166,9 @@ def update_data():
         X = build_basic_features(temp, current)
         X = X.reindex(columns=FEATURE_COLUMNS, fill_value=0)
 
-
         # ML PREDICTION
         hot_prob = hotspot_model.predict_proba(X)[0][1]
         ovl_prob = overload_model.predict_proba(X)[0][1]
-
-        # 🔥 future temperature prediction (ADD HERE)
-        future_temp = future_temp_model.predict(X)[0]
 
         composite_risk = (hot_prob + ovl_prob) / 2
 
@@ -289,7 +285,6 @@ def update_data():
             "success": True,
             "state": state,
             "status": status,
-            "future_temp": float(future_temp),
             "ml": {
                 "hotspot_prob": round(float(hot_prob), 4),
                 "overload_prob": round(float(ovl_prob), 4),
