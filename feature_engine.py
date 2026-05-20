@@ -6,10 +6,10 @@ from collections import deque
 # STREAMING BUFFERS (SHORT + LONG MEMORY)
 # =========================================================
 temp_buffer_short = deque(maxlen=10)
-temp_buffer_long = deque(maxlen=50)
+temp_buffer_long = deque(maxlen=10)
 
 current_buffer_short = deque(maxlen=10)
-current_buffer_long = deque(maxlen=50)
+current_buffer_long = deque(maxlen=10)
 
 
 # =========================================================
