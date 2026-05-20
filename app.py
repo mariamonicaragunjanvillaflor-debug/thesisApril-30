@@ -8,8 +8,10 @@ from datetime import datetime
 
 from feature_engine import (
     build_basic_features,
-    temp_buffer,
-    current_buffer
+    temp_buffer_short,
+    temp_buffer_long,
+    current_buffer_short,
+    current_buffer_long
 )
 
 # =========================================================
@@ -71,9 +73,11 @@ def send_breaker_alert(reading, risk, alert_type, time_to_trip=None):
     if mail is None:
         return False, "Email service not configured"
 
-    recipients = ['gwenlykapergis@gmail.com',
-                  'mariamonicaragunjanvillaflor@gmail.com',
-                  'mercymicadespabiladeras@gmail.com']
+    recipients = [
+        'gwenlykapergis@gmail.com',
+        'mariamonicaragunjanvillaflor@gmail.com',
+        'mercymicadespabiladeras@gmail.com'
+    ]
 
     time_to_trip_text = ""
     if time_to_trip and alert_type in ["overheating", "prevention"]:
@@ -157,7 +161,6 @@ def update_data():
     global latest_data_store
 
     try:
-        # RECEIVE DATA
         data = request.json
         temp = float(data["temperature"])
         current = float(data["current"])
@@ -173,18 +176,17 @@ def update_data():
         composite_risk = (hot_prob + ovl_prob) / 2
 
         # =================================================
-        # ENGINEERING STATE LOGIC
+        # FIXED BUFFER CHECK (SAFE)
         # =================================================
+        buffer_len = len(temp_buffer_short)
 
         # WARMUP
-        if len(temp_buffer) < WARMUP_SAMPLES:
-
+        if buffer_len < WARMUP_SAMPLES:
             state = "WarmingUp"
             status = "COLLECTING DATA"
 
         # CRITICAL
         elif hot_prob >= CRITICAL_THRESHOLD:
-
             state = "Critical"
             status = "HOTSPOT CRITICAL"
 
@@ -202,7 +204,6 @@ def update_data():
                 )
 
         elif ovl_prob >= CRITICAL_THRESHOLD:
-
             state = "Critical"
             status = "OVERLOAD CRITICAL"
 
@@ -221,7 +222,6 @@ def update_data():
 
         # WARNING
         elif hot_prob >= WARNING_THRESHOLD:
-
             state = "Warning"
             status = "HOTSPOT WARNING"
 
@@ -239,7 +239,6 @@ def update_data():
                 )
 
         elif ovl_prob >= WARNING_THRESHOLD:
-
             state = "Warning"
             status = "OVERLOAD WARNING"
 
@@ -256,7 +255,6 @@ def update_data():
                     alert_type="prevention"
                 )
 
-        # NORMAL
         else:
             state = "Normal"
             status = "SYSTEM NORMAL"
@@ -272,7 +270,7 @@ def update_data():
                 "overload_prob": round(float(ovl_prob), 4),
                 "composite_risk": round(float(composite_risk), 4)
             },
-            "buffer_size": len(temp_buffer),
+            "buffer_size": buffer_len,
             "time": datetime.now().strftime("%H:%M:%S")
         }
 
@@ -315,7 +313,7 @@ def health():
     return jsonify({
         "status": "online",
         "models_loaded": True,
-        "buffer_size": len(temp_buffer)
+        "buffer_size": len(temp_buffer_short)
     })
 
 # =========================================================
