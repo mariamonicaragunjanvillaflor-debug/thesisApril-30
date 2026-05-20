@@ -71,7 +71,7 @@ def send_breaker_alert(reading, risk, alert_type, time_to_trip=None):
     if mail is None:
         return False, "Email service not configured"
 
-        recipients = ['gwenlykapergis@gmail.com',
+    recipients = ['gwenlykapergis@gmail.com',
                   'mariamonicaragunjanvillaflor@gmail.com',
                   'mercymicadespabiladeras@gmail.com']
 
