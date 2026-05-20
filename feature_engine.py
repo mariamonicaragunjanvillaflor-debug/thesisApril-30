@@ -1,169 +1,170 @@
-import numpy as np
-import pandas as pd
-from collections import deque
-
-# =========================================================
-# STREAMING BUFFERS (SHORT + LONG MEMORY)
-# =========================================================
-temp_buffer_short = deque(maxlen=10)
-temp_buffer_long = deque(maxlen=50)
-
-current_buffer_short = deque(maxlen=10)
-current_buffer_long = deque(maxlen=50)
 
 
-# =========================================================
-# RESET BUFFERS (IMPORTANT FOR STARTUP)
-# =========================================================
-def reset_buffers():
-    temp_buffer_short.clear()
-    temp_buffer_long.clear()
-    current_buffer_short.clear()
-    current_buffer_long.clear()
-
-
-# =========================================================
-# INTERNAL BUFFER UPDATE
-# =========================================================
 def _update_buffers(temp, current):
-    temp_buffer_short.append(float(temp))
-    temp_buffer_long.append(float(temp))
+    temp_buffer.append(temp)
+    current_buffer.append(current)
+    temp_buffer.append(float(temp))
+    current_buffer.append(float(current))
 
-    current_buffer_short.append(float(current))
-    current_buffer_long.append(float(current))
 
-
-# =========================================================
-# FEATURE ENGINE (SHORT + LONG TERM PHYSICS MODEL)
-# =========================================================
+# =========================
+# FEATURE ENGINE (UNIFIED)
+# FEATURE ENGINE (FIXED + CONSISTENT)
+# =========================
 def build_basic_features(temp, current):
+"""
+    SINGLE SOURCE OF TRUTH FEATURE ENGINE
+    - used in training
+    - used in Flask API
+    - used in Raspberry Pi inference
+    FIXED VERSION:
+    - consistent training/inference behavior
+    - stable early predictions
+    - reduced probability inflation
+   """
 
-    temp = float(temp)
-    current = float(current)
+_update_buffers(temp, current)
 
-    _update_buffers(temp, current)
+    t = np.array(temp_buffer, dtype=float)
+    c = np.array(current_buffer, dtype=float)
 
-    # =====================================================
-    # WARM-UP MODE (INSUFFICIENT DATA)
-    # =====================================================
-    if len(temp_buffer_short) < 10 or len(temp_buffer_long) < 10:
+# =========================
+    # WARM-UP (not enough history)
+    # WARM-UP MODE (IMPORTANT FIX)
+# =========================
+    if len(temp_buffer) < 10:
+        t = temp
+        c = current
+    if len(t) < 5:
+        base_temp = float(temp)
+        base_current = float(current)
 
-        features = {
-            "ambient_temp_c": temp,
-            "temperature_c": temp,
-            "current_a": current,
+features = {
+            "ambient_temp_c": t,
+            "temperature_c": t,
+            "ambient_temp_c": base_temp,
+            "temperature_c": base_temp,
+"temperature_rise_c": 0.0,
+            "current_a": c,
+            "current_a": base_current,
 
-            "current_squared": current ** 2,
-            "power_loss": 0.01 * (current ** 2),
-            "thermal_stress": 0.0,
+            "current_squared": c ** 2,
+            "power_loss": (c ** 2) * 0.01,
+            "current_squared": base_current ** 2,
+            "power_loss": (base_current ** 2) * 0.01,
+"thermal_stress": 0.0,
 
-            "temp_slope_short": 0.0,
-            "temp_slope_long": 0.0,
-            "current_slope_short": 0.0,
-            "current_slope_long": 0.0,
+"thermal_slope_c_per_5s": 0.0,
+"current_slope_a_per_5s": 0.0,
 
-            "temp_acceleration": 0.0,
-            "trend_strength": 0.0,
+"temp_trend": 0.0,
+"current_trend": 0.0,
+            "temp_avg_3": t,
+            "current_avg_3": c,
 
-            "temp_ema": temp,
-            "current_ema": current,
+            "temp_avg_3": base_temp,
+            "current_avg_3": base_current,
 
-     
-        }
+"temp_acceleration": 0.0,
+"temp_trend_long": 0.0,
+            "thermal_memory": t,
 
-        for i in range(10):
-            features[f"temp_lag_{i+1}"] = temp
-            features[f"current_lag_{i+1}"] = current
+            # FIX: stable baseline instead of inflated value
+            "thermal_memory": base_temp,
+}
 
-        return pd.DataFrame([features])
+for i in range(1, 10):
+            features[f"temp_lag_{i}"] = t
+            features[f"current_lag_{i}"] = c
+            features[f"temp_lag_{i}"] = base_temp
+            features[f"current_lag_{i}"] = base_current
 
-    # =====================================================
-    # CONVERT BUFFERS TO ARRAYS
-    # =====================================================
-    t_s = np.array(temp_buffer_short, dtype=np.float32)
-    c_s = np.array(current_buffer_short, dtype=np.float32)
+return pd.DataFrame([features])
 
-    t_l = np.array(temp_buffer_long, dtype=np.float32)
-    c_l = np.array(current_buffer_long, dtype=np.float32)
+# =========================
+    # FULL BUFFER MODE
+    # NORMAL MODE (STABLE)
+# =========================
+    t = np.array(temp_buffer)
+    c = np.array(current_buffer)
+    ambient_temp = float(temp)
+    current_a = float(current)
 
+    ambient_temp = temp
+    current_a = current
+    # Safe arrays (avoid crash if partial buffer)
+    t_safe = np.pad(t, (10 - len(t), 0), mode="edge")
+    c_safe = np.pad(c, (10 - len(c), 0), mode="edge")
 
+current_squared = current_a ** 2
+power_loss = current_squared * 0.01
+    thermal_stress = np.mean(t) * current_a  # consistent physical memory
 
-    # =====================================================
-    # SHORT TERM SLOPES (FAST RESPONSE)
-    # =====================================================
-    temp_slope_short = (t_s[-1] - t_s[0]) / len(t_s)
-    current_slope_short = (c_s[-1] - c_s[0]) / len(c_s)
+    # FIX: consistent thermal stress definition
+    thermal_stress = np.mean(t_safe) * current_a
 
-    # =====================================================
-    # LONG TERM SLOPES (OVERHEATING DETECTION)
-    # =====================================================
-    temp_slope_long = (t_l[-1] - t_l[0]) / len(t_l)
-    current_slope_long = (c_l[-1] - c_l[0]) / len(c_l)
+# =========================
+    # SMOOTH SLOPES (5-sec approx)
+    # SMOOTH SLOPES
+# =========================
+    thermal_slope = (t[-1] - t[0]) / len(t) * 5
+    current_slope = (c[-1] - c[0]) / len(c) * 5
+    thermal_slope = (t_safe[-1] - t_safe[0]) / 10 * 5
+    current_slope = (c_safe[-1] - c_safe[0]) / 10 * 5
 
-    # =====================================================
-    # ACCELERATION (THERMAL RUNAWAY DETECTION)
-    # =====================================================
-    temp_acceleration = t_s[-1] - 2*t_s[-2] + t_s[-3]
+# =========================
+# LAGS
+# =========================
+    temp_lags = list(t[::-1])[:9]
+    curr_lags = list(c[::-1])[:9]
 
-    # =====================================================
-    # TREND STRENGTH (CONSISTENCY OF HEATING)
-    # =====================================================
-    trend_strength = np.mean(np.diff(t_s) > 0)
+    temp_lags += [t[-1]] * (9 - len(temp_lags))
+    curr_lags += [c[-1]] * (9 - len(curr_lags))
+    temp_lags = list(t_safe[::-1])[:9]
+    curr_lags = list(c_safe[::-1])[:9]
 
-    # =====================================================
-    # EMA (SMOOTH SIGNAL)
-    # =====================================================
-    weights = np.linspace(0.2, 1.0, len(t_s))
-    temp_ema = np.sum(t_s * weights) / np.sum(weights)
-    current_ema = np.sum(c_s * weights) / np.sum(weights)
+# =========================
+    # DERIVED FEATURES
+    # DERIVED FEATURES (FIXED SAFETY)
+# =========================
+    temp_trend = t[-1] - t[-2]
+    current_trend = c[-1] - c[-2]
+    temp_trend = t_safe[-1] - t_safe[-2]
+    current_trend = c_safe[-1] - c_safe[-2]
 
-    # =====================================================
-    # THERMAL MEMORY (SLOW HEAT BUILDUP)
-    # =====================================================
-    thermal_memory = np.mean(t_l)
+    temp_avg_3 = np.mean(t[-3:])
+    current_avg_3 = np.mean(c[-3:])
+    temp_avg_3 = np.mean(t_safe[-3:])
+    current_avg_3 = np.mean(c_safe[-3:])
 
-    # =====================================================
-    # LAGS
-    # =====================================================
-    temp_lags = list(t_s[::-1])[:10]
-    curr_lags = list(c_s[::-1])[:10]
+    temp_acceleration = t[-1] - 2*t[-2] + t[-3]
+    temp_acceleration = t_safe[-1] - 2 * t_safe[-2] + t_safe[-3]
 
-    while len(temp_lags) < 10:
-        temp_lags.append(temp)
+    temp_trend_long = t[-1] - t[-7] if len(t) >= 7 else 0.0
+    temp_trend_long = t_safe[-1] - t_safe[-7]
 
-    while len(curr_lags) < 10:
-        curr_lags.append(current)
+    thermal_memory = np.mean(t)
+    thermal_memory = np.mean(t_safe)
 
-    # =====================================================
+# =========================
     # FINAL FEATURE SET
-    # =====================================================
-    features = {
-        "ambient_temp_c": temp,
+    # FINAL FEATURES
+# =========================
+features = {
+"ambient_temp_c": ambient_temp,
         "temperature_c": temp,
-        "current_a": current,
+        "temperature_rise_c": np.mean(t) - 25,
+        "temperature_c": ambient_temp,
+        "temperature_rise_c": np.mean(t_safe) - 30,  # FIXED baseline (important)
 
-        "current_squared": current ** 2,
-        "power_loss": 0.01 * (current ** 2),
-        "thermal_stress": temp * current,
+"current_a": current_a,
 
-        "temp_slope_short": temp_slope_short,
-        "temp_slope_long": temp_slope_long,
-        "current_slope_short": current_slope_short,
-        "current_slope_long": current_slope_long,
+"current_squared": current_squared,
+@@ -132,7 +140,6 @@ def build_basic_features(temp, current):
+"thermal_memory": thermal_memory,
+}
 
-        "temp_acceleration": temp_acceleration,
-        "trend_strength": trend_strength,
-
-        "temp_ema": temp_ema,
-        "current_ema": current_ema,
-
-        "thermal_memory": thermal_memory,
-
-        "thermal_energy": thermal_energy,
-    }
-
-    for i in range(10):
-        features[f"temp_lag_{i+1}"] = temp_lags[i]
-        features[f"current_lag_{i+1}"] = curr_lags[i]
-
-    return pd.DataFrame([features])
+    # add lags
+for i in range(9):
+features[f"temp_lag_{i+1}"] = temp_lags[i]
+features[f"current_lag_{i+1}"] = curr_lags[i]
