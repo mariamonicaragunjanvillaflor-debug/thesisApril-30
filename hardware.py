@@ -62,7 +62,7 @@ init_mlx()
 
 
 # =========================================================
-# ADS1115 + SCT SETUP (NEW)
+# ADS1115 SETUP
 # =========================================================
 i2c_ads = busio.I2C(board.SCL, board.SDA)
 ads = ADS.ADS1115(i2c_ads)
@@ -110,14 +110,13 @@ lcd = init_lcd()
 def get_time():
     return datetime.now().strftime("%H:%M:%S")
 
-
 def center(text):
     text = str(text)
     return text[:16] if len(text) > 16 else text.center(16)
 
 
 # =========================================================
-# TEMP READ
+# SENSOR READINGS
 # =========================================================
 def read_temperature():
     global mlx
@@ -134,9 +133,6 @@ def read_temperature():
         return 35.0
 
 
-# =========================================================
-# CURRENT (SCT-013-000 RMS IMPLEMENTATION)
-# =========================================================
 def read_current():
 
     samples = []
@@ -146,14 +142,11 @@ def read_current():
 
     samples = np.array(samples)
 
-    # remove DC bias
     samples = samples - np.mean(samples)
-
     vrms = np.sqrt(np.mean(samples ** 2))
 
     secondary_current = vrms / BURDEN_RESISTOR
     primary_current = secondary_current * CT_RATIO
-
     primary_current *= CALIBRATION
 
     if primary_current < NOISE_THRESHOLD:
@@ -166,6 +159,7 @@ def read_current():
 # OUTPUT CONTROL
 # =========================================================
 def set_outputs(state):
+
     if state == "Normal":
         GPIO.output(GREEN_LED, 1)
         GPIO.output(RED_LED, 0)
@@ -176,16 +170,22 @@ def set_outputs(state):
         GPIO.output(RED_LED, 1)
         GPIO.output(BUZZER, 0)
 
-    else:
+    elif state == "Critical":
         GPIO.output(GREEN_LED, 0)
         GPIO.output(RED_LED, 1)
         GPIO.output(BUZZER, 1)
+
+    else:
+        GPIO.output(GREEN_LED, 0)
+        GPIO.output(RED_LED, 0)
+        GPIO.output(BUZZER, 0)
 
 
 # =========================================================
 # LCD UPDATE
 # =========================================================
 def lcd_update(state, ml, temp, current):
+
     try:
         now = get_time()
 
@@ -203,7 +203,7 @@ def lcd_update(state, ml, temp, current):
         lcd.write_string(center(f"I:{current:.2f}A"))
 
         lcd.cursor_pos = (3, 0)
-        lcd.write_string(center(f"{state} {cr:.2f}"))
+        lcd.write_string(center(f"{state[:6]} {cr:.2f}"))
 
     except Exception as e:
         print("LCD ERROR:", e)
@@ -214,15 +214,29 @@ def lcd_update(state, ml, temp, current):
 
 
 # =========================================================
+# STATE NORMALIZER
+# =========================================================
+def normalize_state(state):
+    if state not in ["Normal", "Warning", "Critical"]:
+        return "Normal"
+    return state
+
+
+# =========================================================
 # MAIN LOOP
 # =========================================================
 def run():
+
     print("System running...")
 
     last_lcd = 0
     last_recovery = time.time()
 
-    last_valid_ml = {"hotspot_prob": 0, "overload_prob": 0, "composite_risk": 0}
+    last_valid_ml = {
+        "hotspot_prob": 0,
+        "overload_prob": 0,
+        "composite_risk": 0
+    }
 
     while True:
         try:
@@ -235,16 +249,18 @@ def run():
                     json={"temperature": temp, "current": current},
                     timeout=TIMEOUT
                 )
+
                 result = response.json()
 
-                state = result.get("state", "Normal")
+                state = normalize_state(result.get("state", "Normal"))
                 ml = result.get("ml", last_valid_ml)
 
                 last_valid_ml = ml
 
             except Exception as api_error:
                 print("API ERROR:", api_error)
-                state = "Warning"
+
+                state = "Normal"
                 ml = last_valid_ml
 
             set_outputs(state)
