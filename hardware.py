@@ -86,33 +86,37 @@ chan = AnalogIn(ads, 0)
 def read_adc_voltage():
     return chan.voltage
 
-def read_current(window_ms=300):
+def read_current_rms(window_ms=300):
     start = time.time()
 
-    sum_sq = 0
-    samples = 0
+    values = []
 
+    # 1. collect samples
     while (time.time() - start) < (window_ms / 1000):
 
-        v = read_adc_voltage()
-
-        sum_sq += v * v
-        samples += 1
+        v = chan.voltage   # ADS1115 CircuitPython
+        values.append(v)
 
         time.sleep(0.001)
 
-    if samples == 0:
+    if len(values) == 0:
         return 0.0
 
-    rms_voltage = math.sqrt(sum_sq / samples)
+    # 2. remove DC offset (FROM OLD CODE LOGIC)
+    avg = sum(values) / len(values)
 
-    # 🔧 CALIBRATION (TUNE THIS)
-    # start value for SCT-013 systems
-    CAL_FACTOR = 0.045
+    centered = [(x - avg) for x in values]
+
+    # 3. RMS calculation (FROM OLD CODE)
+    sum_sq = sum(x * x for x in centered)
+    rms_voltage = math.sqrt(sum_sq / len(centered))
+
+    # 4. CALIBRATION (THIS IS THE ONLY THING YOU TUNE)
+    CAL_FACTOR = 0.00006  # start value (you will adjust)
 
     current = rms_voltage / CAL_FACTOR
 
-    return 0.0 if current < 0.02 else current
+    return max(0.0, current)
 
 # =========================================================
 # LCD SETUP
