@@ -18,6 +18,7 @@ from adafruit_ads1x15.analog_in import AnalogIn
 # CONFIG
 # =========================================================
 LCD_REFRESH_INTERVAL = 1.0
+I2C_DELAY = 0.02
 FLASK_URL = "http://127.0.0.1:5000/api/update"
 TIMEOUT = 2
 
@@ -129,31 +130,41 @@ def safe_float(value):
 # =========================================================
 # CURRENT SENSOR (SCT-013 RMS)
 # =========================================================
-def read_current(window_ms=120):
+def read_adc(channel=0):
+    raw = bus.read_word_data(0x48, 0x40 + channel)
+    raw = ((raw & 0xFF) << 8) | (raw >> 8)
+
+    if raw > 32767:
+        raw -= 65536
+
+    time.sleep(I2C_DELAY)
+    return raw
+
+
+def read_current_rms(window_ms=300):
     start = time.time()
 
+    offset = read_adc(0)
     sum_sq = 0
     samples = 0
 
     while (time.time() - start) < (window_ms / 1000):
-
-        voltage = chan.voltage
-        voltage = 0.0 if voltage is None else voltage
-
-        sum_sq += voltage * voltage
-        samples += 1
-
         time.sleep(0.001)
+
+        raw = read_adc(0)
+        offset += (raw - offset) * 0.01
+        centered = raw - offset
+
+        sum_sq += centered * centered
+        samples += 1
 
     if samples == 0:
         return 0.0
 
-    rms_voltage = math.sqrt(sum_sq / samples)
+    rms = math.sqrt(sum_sq / samples)
+    current = rms * 0.001
 
-    # ⚠️ calibration factor (adjust later)
-    current = rms_voltage * 30
-
-    return current
+    return 0.0 if current < 0.05 else current
 
 # =========================================================
 # GPIO OUTPUT CONTROL
@@ -235,8 +246,10 @@ def run():
 
         # SENSOR + API LOOP
         if now - last_sensor >= 3:
-            temp = read_temperature()
-            current = read_current()
+                temp = read_temperature()
+                current = read_current()
+
+                print(f"[{get_time()}] T={temp:.2f}°C | I={current:.2f}A | State={state}")
 
             try:
                 response = requests.post(
