@@ -86,7 +86,7 @@ chan = AnalogIn(ads, 0)
 def read_adc_voltage():
     return chan.voltage
 
-def read_current_rms(window_ms=300):
+def read_current(window_ms=300):
     start = time.time()
 
     values = []
