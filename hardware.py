@@ -137,50 +137,96 @@ def read_temperature():
 # =========================================================
 # CURRENT (SCT-013-000 RMS IMPLEMENTATION)
 # =========================================================
-def read_current():
+def read_current(window_ms=300):
+    start = time.time()
 
-    samples = []
+    offset = read_adc(0)
+    sum_sq = 0
+    samples = 0
 
-    for _ in range(SAMPLES):
-        samples.append(chan.voltage)
+    while (time.time() - start) < (window_ms / 1000):
+        time.sleep(0.001)
 
-    samples = np.array(samples)
+        raw = read_adc(0)
+        offset += (raw - offset) * 0.01
+        centered = raw - offset
 
-    # remove DC bias
-    samples = samples - np.mean(samples)
+        sum_sq += centered * centered
+        samples += 1
 
-    vrms = np.sqrt(np.mean(samples ** 2))
+    if samples == 0:
+        return 0.0
 
-    secondary_current = vrms / BURDEN_RESISTOR
-    primary_current = secondary_current * CT_RATIO
+    rms = math.sqrt(sum_sq / samples)
+    current = rms * 0.001
 
-    primary_current *= CALIBRATION
-
-    if primary_current < NOISE_THRESHOLD:
-        primary_current = 0
-
-    return primary_current
+    return 0.0 if current < 0.05 else current
 
 
 # =========================================================
 # OUTPUT CONTROL
 # =========================================================
 def set_outputs(state):
+    global last_beep_time, last_green_blink, green_state, buzzer_state
+
+    current_time = time.time()
+
+    # =========================
+    # NORMAL STATE
+    # =========================
     if state == "Normal":
         GPIO.output(GREEN_LED, 1)
         GPIO.output(RED_LED, 0)
         GPIO.output(BUZZER, 0)
 
+    # =========================
+    # WARNING STATE
+    # Buzzer beeps every 3 seconds
+    # =========================
     elif state == "Warning":
         GPIO.output(GREEN_LED, 0)
         GPIO.output(RED_LED, 1)
+
+        if current_time - last_beep_time >= 3:
+            buzzer_state = not buzzer_state
+            GPIO.output(BUZZER, buzzer_state)
+            last_beep_time = current_time
+
+    # =========================
+    # CRITICAL STATE
+    # Intermittent fast buzzer
+    # =========================
+    elif state == "Critical":
+        GPIO.output(GREEN_LED, 0)
+        GPIO.output(RED_LED, 1)
+
+        # fast intermittent beep (0.5 sec toggle)
+        if current_time - last_beep_time >= 0.5:
+            buzzer_state = not buzzer_state
+            GPIO.output(BUZZER, buzzer_state)
+            last_beep_time = current_time
+
+    # =========================
+    # WARMING UP STATE
+    # Blinking green LED
+    # =========================
+    elif state == "WarmingUp":
+        GPIO.output(RED_LED, 0)
+
+        if current_time - last_green_blink >= 0.5:
+            green_state = not green_state
+            GPIO.output(GREEN_LED, green_state)
+            last_green_blink = current_time
+
         GPIO.output(BUZZER, 0)
 
+    # =========================
+    # DEFAULT SAFETY
+    # =========================
     else:
         GPIO.output(GREEN_LED, 0)
         GPIO.output(RED_LED, 1)
-        GPIO.output(BUZZER, 1)
-
+        GPIO.output(BUZZER, 0)
 
 # =========================================================
 # LCD UPDATE
@@ -220,12 +266,20 @@ def run():
     print("System running...")
 
     last_lcd = 0
-    last_recovery = time.time()
+    last_sensor = 0
 
-    last_valid_ml = {"hotspot_prob": 0, "overload_prob": 0, "composite_risk": 0}
+    temp = 0
+    current = 0
+    state = "Normal"
+    ml = {"hotspot_prob": 0, "overload_prob": 0, "composite_risk": 0}
 
     while True:
-        try:
+        now = time.time()
+
+        # =========================
+        # 🔴 SLOW LOOP (sensor + API)
+        # =========================
+        if now - last_sensor >= 3:   # <-- IMPORTANT FIX
             temp = read_temperature()
             current = read_current()
 
@@ -233,52 +287,28 @@ def run():
                 response = requests.post(
                     FLASK_URL,
                     json={"temperature": temp, "current": current},
-                    timeout=TIMEOUT
+                    timeout=2
                 )
+
                 result = response.json()
-
                 state = result.get("state", "Normal")
-                ml = result.get("ml", last_valid_ml)
+                ml = result.get("ml", ml)
 
-                last_valid_ml = ml
-
-            except Exception as api_error:
-                print("API ERROR:", api_error)
+            except Exception as e:
+                print("API ERROR:", e)
                 state = "Warning"
-                ml = last_valid_ml
 
             set_outputs(state)
+            last_sensor = now
 
-            now = time.time()
+        # =========================
+        # 🟢 FAST LOOP (LCD every 1 sec)
+        # =========================
+        if now - last_lcd >= 1:
+            lcd_update(state, ml, temp, current)
+            last_lcd = now
 
-            if now - last_lcd >= LCD_REFRESH_INTERVAL:
-                lcd_update(state, ml, temp, current)
-                last_lcd = now
-
-            print(
-                f"[{state}] "
-                f"T:{temp:.2f} I:{current:.2f} "
-                f"HP:{ml.get('hotspot_prob', 0):.3f} "
-                f"OP:{ml.get('overload_prob', 0):.3f} "
-                f"CR:{ml.get('composite_risk', 0):.3f}"
-            )
-
-            if now - last_recovery > I2C_RECOVERY_INTERVAL:
-                os.system("i2cdetect -y 1 > /dev/null 2>&1")
-                last_recovery = now
-
-        except Exception as e:
-            print("SYSTEM ERROR:", e)
-
-            set_outputs("Critical")
-
-            try:
-                lcd.clear()
-                lcd.write_string("SYSTEM ERROR")
-            except:
-                pass
-
-        time.sleep(SAMPLE_INTERVAL)
+        time.sleep(0.1)
 
 
 # =========================================================
