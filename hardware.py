@@ -86,37 +86,39 @@ chan = AnalogIn(ads, 0)
 def read_adc_voltage():
     return chan.voltage
 
-def read_current(window_ms=300):
+def read_current(window_ms=120):
     start = time.time()
 
     values = []
 
     while (time.time() - start) < (window_ms / 1000):
-        v = chan.voltage
-        values.append(v)
-        time.sleep(0.001)
+        values.append(chan.voltage)
+        time.sleep(0.0005)
 
-    if len(values) == 0:
+    if len(values) < 5:
         return 0.0
 
     # Remove DC offset
     avg = sum(values) / len(values)
-    centered = [x - avg for x in values]
+    centered = [v - avg for v in values]
 
-    # RMS voltage
-    sum_sq = sum(x*x for x in centered)
-    rms_voltage = math.sqrt(sum_sq / len(centered))
+    # RMS calculation
+    rms_voltage = math.sqrt(
+        sum(v * v for v in centered) / len(centered)
+    )
 
-    # SCT-013-000 calibration
+    # SCT-013-000 + 220Ω burden
     CT_RATIO = 2000
     BURDEN = 220.0
-
-    # empirical correction
     CALIBRATION = 4.5
 
     current = rms_voltage * (CT_RATIO / BURDEN) * CALIBRATION
 
-    return max(0.0, current)
+    # Noise floor suppression
+    if current < 0.08:
+        current = 0.0
+
+    return round(current, 2)
 
 # =========================================================
 # LCD SETUP
