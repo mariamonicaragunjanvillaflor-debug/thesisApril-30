@@ -95,27 +95,37 @@ def read_current(window_ms=120):
         values.append(chan.voltage)
         time.sleep(0.0005)
 
-    if len(values) < 5:
+    if len(values) < 10:
         return 0.0
 
-    # Remove DC offset
+    # DC offset removal
     avg = sum(values) / len(values)
     centered = [v - avg for v in values]
 
-    # RMS calculation
+    # RMS voltage
     rms_voltage = math.sqrt(
         sum(v * v for v in centered) / len(centered)
     )
 
-    # SCT-013-000 + 220Ω burden
+    # ==========================================
+    # HARDWARE CALIBRATION
+    # ==========================================
     CT_RATIO = 2000
     BURDEN = 220.0
     CALIBRATION = 4.5
 
     current = rms_voltage * (CT_RATIO / BURDEN) * CALIBRATION
 
-    # Noise floor suppression
-    if current < 0.08:
+    # ==========================================
+    # NOISE FLOOR SUPPRESSION
+    # ==========================================
+    # idle SCT noise removal
+    NOISE_OFFSET = 0.28
+
+    current = max(0.0, current - NOISE_OFFSET)
+
+    # hard cutoff for tiny noise
+    if current < 0.03:
         current = 0.0
 
     return round(current, 2)
