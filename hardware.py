@@ -1,6 +1,5 @@
 import requests
 import time
-import os
 import math
 from datetime import datetime
 
@@ -18,7 +17,6 @@ from adafruit_ads1x15.analog_in import AnalogIn
 # =========================================================
 # CONFIG
 # =========================================================
-SAMPLE_INTERVAL = 1.0
 LCD_REFRESH_INTERVAL = 1.0
 FLASK_URL = "http://127.0.0.1:5000/api/update"
 TIMEOUT = 2
@@ -69,7 +67,10 @@ def read_temperature():
     try:
         if mlx is None:
             init_mlx()
-        return float(mlx.object_temperature)
+
+        value = mlx.object_temperature
+        return float(value) if value is not None else 0.0
+
     except Exception as e:
         print("MLX ERROR:", e)
         init_mlx()
@@ -117,8 +118,16 @@ def center(text):
     text = str(text)
     return text[:16] if len(text) > 16 else text.center(16)
 
+def safe_float(value):
+    try:
+        if value is None:
+            return 0.0
+        return float(value)
+    except:
+        return 0.0
+
 # =========================================================
-# CURRENT SENSOR (SCT-013 RMS via ADS1115)
+# CURRENT SENSOR (SCT-013 RMS)
 # =========================================================
 def read_current(window_ms=120):
     start = time.time()
@@ -127,8 +136,9 @@ def read_current(window_ms=120):
     samples = 0
 
     while (time.time() - start) < (window_ms / 1000):
-        time.sleep(0.001)
+
         voltage = chan.voltage
+        voltage = 0.0 if voltage is None else voltage
 
         sum_sq += voltage * voltage
         samples += 1
@@ -140,10 +150,10 @@ def read_current(window_ms=120):
 
     rms_voltage = math.sqrt(sum_sq / samples)
 
-    # ⚠️ CALIBRATION FACTOR (adjust for your SCT)
+    # ⚠️ calibration factor (adjust later)
     current = rms_voltage * 30
 
-    
+    return current
 
 # =========================================================
 # GPIO OUTPUT CONTROL
@@ -183,16 +193,18 @@ def lcd_update(state, ml, temp, current):
     try:
         now = get_time()
 
+        temp = safe_float(temp)
+        current = safe_float(current)
         cr = ml.get("composite_risk", 0.0) if ml else 0.0
 
         lcd.cursor_pos = (0, 0)
         lcd.write_string(center(now))
 
         lcd.cursor_pos = (1, 0)
-        lcd.write_string(center(f"T:{temp:.1f}C"))
+        lcd.write_string(center("T:{:.1f}C".format(temp)))
 
         lcd.cursor_pos = (2, 0)
-        lcd.write_string(center(f"I:{current:.2f}A"))
+        lcd.write_string(center("I:{:.2f}A".format(current)))
 
         lcd.cursor_pos = (3, 0)
         lcd.write_string(center(f"{state} {cr:.2f}"))
@@ -213,8 +225,8 @@ def run():
     last_lcd = 0
     last_sensor = 0
 
-    temp = 0
-    current = 0
+    temp = 0.0
+    current = 0.0
     state = "Normal"
     ml = {"composite_risk": 0}
 
