@@ -125,6 +125,7 @@ def read_current(window_ms=200):
         return 0.0
 
     return round(current, 2)
+    print(chan.voltage)
 
 # =========================================================
 # LCD SETUP
