@@ -141,7 +141,7 @@ def read_adc(channel=0):
     return raw
 
 
-def read_current_rms(window_ms=300):
+def read_current(window_ms=300):
     start = time.time()
 
     offset = read_adc(0)
