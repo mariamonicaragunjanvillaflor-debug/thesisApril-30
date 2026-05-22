@@ -13,12 +13,10 @@ import adafruit_mlx90614
 import adafruit_ads1x15.ads1115 as ADS
 from adafruit_ads1x15.analog_in import AnalogIn
 
-
 # =========================================================
 # CONFIG
 # =========================================================
 LCD_REFRESH_INTERVAL = 1.0
-I2C_DELAY = 0.02
 FLASK_URL = "http://127.0.0.1:5000/api/update"
 TIMEOUT = 2
 
@@ -43,7 +41,7 @@ GPIO.output(RED_LED, 0)
 GPIO.output(BUZZER, 0)
 
 # =========================================================
-# I2C SETUP (shared bus)
+# I2C SETUP
 # =========================================================
 i2c = busio.I2C(board.SCL, board.SDA)
 
@@ -69,8 +67,7 @@ def read_temperature():
         if mlx is None:
             init_mlx()
 
-        value = mlx.object_temperature
-        return float(value) if value is not None else 0.0
+        return float(mlx.object_temperature)
 
     except Exception as e:
         print("MLX ERROR:", e)
@@ -78,13 +75,41 @@ def read_temperature():
         return 0.0
 
 # =========================================================
-# ADS1115 SETUP (SCT-013)
+# ADS1115 SETUP (FIXED - NO SMBUS)
 # =========================================================
 ads = ADS.ADS1115(i2c)
 ads.gain = 1
 ads.data_rate = 860
 
 chan = AnalogIn(ads, 0)
+
+def read_adc_voltage():
+    return chan.voltage
+
+def read_current(window_ms=300):
+    start = time.time()
+
+    sum_sq = 0
+    samples = 0
+
+    while (time.time() - start) < (window_ms / 1000):
+
+        v = read_adc_voltage()
+
+        sum_sq += v * v
+        samples += 1
+
+        time.sleep(0.001)
+
+    if samples == 0:
+        return 0.0
+
+    rms = math.sqrt(sum_sq / samples)
+
+    # SCT-013 calibration (adjust if needed)
+    current = rms * 30.0
+
+    return 0.0 if current < 0.05 else current
 
 # =========================================================
 # LCD SETUP
@@ -121,53 +146,12 @@ def center(text):
 
 def safe_float(value):
     try:
-        if value is None:
-            return 0.0
-        return float(value)
+        return float(value) if value is not None else 0.0
     except:
         return 0.0
 
 # =========================================================
-# CURRENT SENSOR (SCT-013 RMS)
-# =========================================================
-def read_adc(channel=0):
-    raw = bus.read_word_data(0x48, 0x40 + channel)
-    raw = ((raw & 0xFF) << 8) | (raw >> 8)
-
-    if raw > 32767:
-        raw -= 65536
-
-    time.sleep(I2C_DELAY)
-    return raw
-
-
-def read_current(window_ms=300):
-    start = time.time()
-
-    offset = read_adc(0)
-    sum_sq = 0
-    samples = 0
-
-    while (time.time() - start) < (window_ms / 1000):
-        time.sleep(0.001)
-
-        raw = read_adc(0)
-        offset += (raw - offset) * 0.01
-        centered = raw - offset
-
-        sum_sq += centered * centered
-        samples += 1
-
-    if samples == 0:
-        return 0.0
-
-    rms = math.sqrt(sum_sq / samples)
-    current = rms * 0.001
-
-    return 0.0 if current < 0.05 else current
-
-# =========================================================
-# GPIO OUTPUT CONTROL
+# GPIO CONTROL
 # =========================================================
 def set_outputs(state):
     if state == "Normal":
@@ -212,10 +196,10 @@ def lcd_update(state, ml, temp, current):
         lcd.write_string(center(now))
 
         lcd.cursor_pos = (1, 0)
-        lcd.write_string(center("T:{:.1f}C".format(temp)))
+        lcd.write_string(center(f"T:{temp:.1f}C"))
 
         lcd.cursor_pos = (2, 0)
-        lcd.write_string(center("I:{:.2f}A".format(current)))
+        lcd.write_string(center(f"I:{current:.2f}A"))
 
         lcd.cursor_pos = (3, 0)
         lcd.write_string(center(f"{state} {cr:.2f}"))
@@ -244,7 +228,6 @@ def run():
     while True:
         now = time.time()
 
-        # SENSOR + API LOOP
         if now - last_sensor >= 3:
             temp = read_temperature()
             current = read_current()
@@ -269,12 +252,12 @@ def run():
             set_outputs(state)
             last_sensor = now
 
-        # LCD LOOP
         if now - last_lcd >= LCD_REFRESH_INTERVAL:
             lcd_update(state, ml, temp, current)
             last_lcd = now
 
         time.sleep(0.1)
+
 # =========================================================
 # START
 # =========================================================
