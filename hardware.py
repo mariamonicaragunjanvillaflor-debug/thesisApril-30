@@ -1,6 +1,8 @@
 import requests
 import time
 import os
+import math
+import smbus
 from datetime import datetime
 
 import RPi.GPIO as GPIO
@@ -21,6 +23,7 @@ from adafruit_ads1x15.analog_in import AnalogIn
 SAMPLE_INTERVAL = 1.0
 LCD_REFRESH_INTERVAL = 1.0
 I2C_RECOVERY_INTERVAL = 10
+I2C_DELAY = 0.001
 WARMUP_SAMPLES = 10
 
 FLASK_URL = "http://127.0.0.1:5000/api/update"
@@ -28,6 +31,10 @@ TIMEOUT = 2
 
 time.sleep(2)
 
+last_beep_time = 0
+last_green_blink = 0
+green_state = False
+buzzer_state = False
 
 # =========================================================
 # GPIO SETUP
@@ -144,7 +151,7 @@ def read_adc(channel=0):
 # =========================================================
 # CURRENT (SCT-013-000 RMS IMPLEMENTATION)
 # =========================================================
-def read_current(window_ms=300):
+def read_current(window_ms=100):
     start = time.time()
 
     offset = read_adc(0)
