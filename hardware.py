@@ -86,35 +86,30 @@ chan = AnalogIn(ads, 0)
 def read_adc_voltage():
     return chan.voltage
 
-def read_current(window_ms=300):
+def read_current_rms(window_ms=300):
     start = time.time()
 
     values = []
 
-    # 1. collect samples
     while (time.time() - start) < (window_ms / 1000):
-
-        v = chan.voltage   # ADS1115 CircuitPython
+        v = chan.voltage
         values.append(v)
-
         time.sleep(0.001)
 
     if len(values) == 0:
         return 0.0
 
-    # 2. remove DC offset (FROM OLD CODE LOGIC)
     avg = sum(values) / len(values)
+    centered = [x - avg for x in values]
 
-    centered = [(x - avg) for x in values]
-
-    # 3. RMS calculation (FROM OLD CODE)
-    sum_sq = sum(x * x for x in centered)
+    sum_sq = sum(x*x for x in centered)
     rms_voltage = math.sqrt(sum_sq / len(centered))
 
-    # 4. CALIBRATION (THIS IS THE ONLY THING YOU TUNE)
-    CAL_FACTOR = 0.00006  # start value (you will adjust)
+    # 🔥 HARDWARE-CORRECT CALIBRATION
+    CT_RATIO = 2000
+    BURDEN = 220.0
 
-    current = rms_voltage / CAL_FACTOR
+    current = rms_voltage * (CT_RATIO / BURDEN)
 
     return max(0.0, current)
 
