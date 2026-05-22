@@ -227,19 +227,61 @@ def lcd_update(state, ml, temp, current):
 
         temp = safe_float(temp)
         current = safe_float(current)
-        cr = ml.get("composite_risk", 0.0) if ml else 0.0
 
+        hotspot = ml.get("hotspot_prob", 0.0) if ml else 0.0
+        overload = ml.get("overload_prob", 0.0) if ml else 0.0
+
+        # =========================
+        # LINE 1: TIME
+        # =========================
         lcd.cursor_pos = (0, 0)
         lcd.write_string(center(now))
 
+        # =========================
+        # LINE 2: TEMPERATURE
+        # =========================
         lcd.cursor_pos = (1, 0)
         lcd.write_string(center(f"T:{temp:.1f}C"))
 
+        # =========================
+        # LINE 3: CURRENT
+        # =========================
         lcd.cursor_pos = (2, 0)
         lcd.write_string(center(f"I:{current:.2f}A"))
 
+        # =========================
+        # LINE 4: STATE + ALERT FLAGS
+        # =========================
         lcd.cursor_pos = (3, 0)
-        lcd.write_string(center(f"{state} {cr:.2f}"))
+
+        if state == "Normal":
+            lcd.write_string(center("SYSTEM OK"))
+
+        elif state == "Warning":
+            if hotspot >= 0.6 and overload >= 0.6:
+                lcd.write_string(center("WARN: H+OVERLOAD"))
+            elif hotspot >= 0.6:
+                lcd.write_string(center("WARN: OVERHEAT"))
+            elif overload >= 0.6:
+                lcd.write_string(center("WARN: OVERLOAD"))
+            else:
+                lcd.write_string(center("CHECK LOAD"))
+
+        elif state == "Critical":
+            if hotspot >= 0.85 and overload >= 0.85:
+                lcd.write_string(center("CRIT: H+OVERLOAD"))
+            elif hotspot >= 0.85:
+                lcd.write_string(center("CRIT: OVERHEAT"))
+            elif overload >= 0.85:
+                lcd.write_string(center("CRIT: OVERLOAD"))
+            else:
+                lcd.write_string(center("CRITICAL"))
+
+        elif state == "WarmingUp":
+            lcd.write_string(center("STARTING UP"))
+
+        else:
+            lcd.write_string(center("SYSTEM ERROR"))
 
     except Exception as e:
         print("LCD ERROR:", e)
@@ -247,6 +289,7 @@ def lcd_update(state, ml, temp, current):
             lcd.clear()
         except:
             pass
+
 
 # =========================================================
 # MAIN LOOP
