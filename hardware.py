@@ -246,10 +246,10 @@ def run():
 
         # SENSOR + API LOOP
         if now - last_sensor >= 3:
-                temp = read_temperature()
-                current = read_current()
+            temp = read_temperature()
+            current = read_current()
 
-                print(f"[{get_time()}] T={temp:.2f}°C | I={current:.2f}A | State={state}")
+            print(f"[{get_time()}] T={temp:.2f}°C | I={current:.2f}A | State={state}")
 
             try:
                 response = requests.post(
@@ -275,7 +275,6 @@ def run():
             last_lcd = now
 
         time.sleep(0.1)
-
 # =========================================================
 # START
 # =========================================================
