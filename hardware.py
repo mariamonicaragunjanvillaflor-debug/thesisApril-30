@@ -170,22 +170,43 @@ def safe_float(value):
 # GPIO CONTROL
 # =========================================================
 def set_outputs(state):
+    global warning_last_toggle, warning_buzzer_on
+    global critical_last_toggle, critical_buzzer_on
+
+    now = time.time()
+
+    # =========================
+    # NORMAL
+    # =========================
     if state == "Normal":
         GPIO.output(GREEN_LED, 1)
         GPIO.output(RED_LED, 0)
         GPIO.output(BUZZER, 0)
 
+    # =========================
+    # WARNING (2 sec ON, 3 sec OFF cycle)
+    # =========================
     elif state == "Warning":
         GPIO.output(GREEN_LED, 0)
         GPIO.output(RED_LED, 1)
-        GPIO.output(BUZZER, 1)
-        time.sleep(0.1)
-        GPIO.output(BUZZER, 0)
 
+        if now - warning_last_toggle >= (2 if warning_buzzer_on else 3):
+            warning_buzzer_on = not warning_buzzer_on
+            GPIO.output(BUZZER, warning_buzzer_on)
+            warning_last_toggle = now
+
+    # =========================
+    # CRITICAL (fast intermittent + long beep feel)
+    # =========================
     elif state == "Critical":
         GPIO.output(GREEN_LED, 0)
         GPIO.output(RED_LED, 1)
-        GPIO.output(BUZZER, 1)
+
+        # fast beep cycle (0.2s on/off)
+        if now - critical_last_toggle >= 0.2:
+            critical_buzzer_on = not critical_buzzer_on
+            GPIO.output(BUZZER, critical_buzzer_on)
+            critical_last_toggle = now
 
     elif state == "WarmingUp":
         GPIO.output(GREEN_LED, int(time.time() * 2) % 2)
