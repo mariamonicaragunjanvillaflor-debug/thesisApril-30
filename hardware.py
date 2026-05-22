@@ -89,34 +89,40 @@ def read_adc_voltage():
 def read_current(window_ms=200):
     start = time.time()
 
-    values = []
+    offset = chan.voltage   # initialize offset with ADC voltage
+    sum_sq = 0.0
+    samples = 0
 
     while (time.time() - start) < (window_ms / 1000):
-        values.append(chan.voltage)
-        time.sleep(0.0005)
 
-    if len(values) < 10:
+        time.sleep(0.001)
+
+        raw = chan.voltage
+
+        # 🔥 same adaptive offset logic you used before
+        offset += (raw - offset) * 0.01
+        centered = raw - offset
+
+        sum_sq += centered * centered
+        samples += 1
+
+    if samples == 0:
         return 0.0
 
-    avg = sum(values) / len(values)
+    rms_voltage = math.sqrt(sum_sq / samples)
 
-    centered = [v - avg for v in values]
+    # DEBUG (important for calibration)
+    print("RMS Voltage:", rms_voltage)
 
-    rms_voltage = math.sqrt(
-        sum(v*v for v in centered) / len(centered)
-    )
-
-    print("RMS:", rms_voltage)
-
-    CT_RATIO = 2000
+    # SCT-013 conversion
+    CT_RATIO = 2000.0
     BURDEN = 220.0
-    CALIBRATION = 4.5
 
-    current = rms_voltage * (CT_RATIO / BURDEN) * CALIBRATION
+    current = rms_voltage * (CT_RATIO / BURDEN)
 
-    # smaller noise filter
-    if current < 0.02:
-        current = 0.0
+    # noise floor
+    if current < 0.03:
+        return 0.0
 
     return round(current, 2)
 
