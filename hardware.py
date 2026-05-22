@@ -104,12 +104,15 @@ def read_current(window_ms=300):
     if samples == 0:
         return 0.0
 
-    rms = math.sqrt(sum_sq / samples)
+    rms_voltage = math.sqrt(sum_sq / samples)
 
-    # SCT-013 calibration (adjust if needed)
-    current = rms * 30.0
+    # 🔧 CALIBRATION (TUNE THIS)
+    # start value for SCT-013 systems
+    CAL_FACTOR = 0.045
 
-    return 0.0 if current < 0.05 else current
+    current = rms_voltage / CAL_FACTOR
+
+    return 0.0 if current < 0.02 else current
 
 # =========================================================
 # LCD SETUP
