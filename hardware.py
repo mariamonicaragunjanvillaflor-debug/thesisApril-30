@@ -21,6 +21,7 @@ from adafruit_ads1x15.analog_in import AnalogIn
 SAMPLE_INTERVAL = 1.0
 LCD_REFRESH_INTERVAL = 1.0
 I2C_RECOVERY_INTERVAL = 10
+WARMUP_SAMPLES = 10
 
 FLASK_URL = "http://127.0.0.1:5000/api/update"
 TIMEOUT = 2
@@ -42,6 +43,9 @@ GPIO.setup(GREEN_LED, GPIO.OUT)
 GPIO.setup(RED_LED, GPIO.OUT)
 GPIO.setup(BUZZER, GPIO.OUT)
 
+GPIO.output(GREEN_LED, 0)
+GPIO.output(RED_LED, 0)
+GPIO.output(BUZZER, 0)
 
 # =========================================================
 # SAFE MLX INIT
@@ -72,11 +76,6 @@ ads.data_rate = 860
 
 chan = AnalogIn(ads, 0)
 
-BURDEN_RESISTOR = 220.0
-CT_RATIO = 2000
-CALIBRATION = 0.0505
-SAMPLES = 800
-NOISE_THRESHOLD = 0.05
 
 
 # =========================================================
@@ -131,9 +130,17 @@ def read_temperature():
     except Exception as e:
         print("MLX ERROR:", e)
         init_mlx()
-        return 35.0
+        return 0.0
 
+def read_adc(channel=0):
+    raw = bus.read_word_data(0x48, 0x40 + channel)
+    raw = ((raw & 0xFF) << 8) | (raw >> 8)
 
+    if raw > 32767:
+        raw -= 65536
+
+    time.sleep(I2C_DELAY)
+    return raw
 # =========================================================
 # CURRENT (SCT-013-000 RMS IMPLEMENTATION)
 # =========================================================
@@ -161,6 +168,16 @@ def read_current(window_ms=300):
     current = rms * 0.001
 
     return 0.0 if current < 0.05 else current
+
+# =========================================================
+# I2C RECOVERY
+# =========================================================
+def recover_i2c():
+    try:
+        os.system("i2cdetect -y 1 > /dev/null 2>&1")
+        time.sleep(0.1)
+    except:
+        pass
 
 
 # =========================================================
