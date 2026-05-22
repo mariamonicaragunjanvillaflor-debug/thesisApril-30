@@ -2,7 +2,7 @@ import requests
 import time
 import os
 import math
-import smbus
+from smbus2 import SMBus
 from datetime import datetime
 
 import RPi.GPIO as GPIO
@@ -35,7 +35,7 @@ last_beep_time = 0
 last_green_blink = 0
 green_state = False
 buzzer_state = False
-
+bus = SMBus(1)
 # =========================================================
 # GPIO SETUP
 # =========================================================
