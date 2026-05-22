@@ -99,17 +99,22 @@ def read_current(window_ms=300):
     if len(values) == 0:
         return 0.0
 
+    # Remove DC offset
     avg = sum(values) / len(values)
     centered = [x - avg for x in values]
 
+    # RMS voltage
     sum_sq = sum(x*x for x in centered)
     rms_voltage = math.sqrt(sum_sq / len(centered))
 
-    # 🔥 HARDWARE-CORRECT CALIBRATION
+    # SCT-013-000 calibration
     CT_RATIO = 2000
     BURDEN = 220.0
 
-    current = rms_voltage * (CT_RATIO / BURDEN)
+    # empirical correction
+    CALIBRATION = 4.5
+
+    current = rms_voltage * (CT_RATIO / BURDEN) * CALIBRATION
 
     return max(0.0, current)
 
