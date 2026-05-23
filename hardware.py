@@ -138,6 +138,29 @@ def read_current(window_ms=500):
     return round(current, 2)
 
 # =========================================================
+# LCD SETUP
+# =========================================================
+def init_lcd():
+    for i in range(3):
+        try:
+            lcd = CharLCD(
+                i2c_expander='PCF8574',
+                address=0x27,
+                port=1,
+                cols=16,
+                rows=4
+            )
+            lcd.clear()
+            return lcd
+        except Exception as e:
+            print(f"LCD retry {i+1}/3 failed:", e)
+            time.sleep(1)
+
+    raise RuntimeError("LCD failed")
+
+lcd = init_lcd()
+
+# =========================================================
 # HELPERS
 # =========================================================
 def get_time():
