@@ -78,7 +78,7 @@ def read_temperature():
 # ADS1115 SETUP (FIXED - NO SMBUS)
 # =========================================================
 ads = ADS.ADS1115(i2c)
-ads.gain = 16
+ads.gain = 1
 ads.data_rate = 860
 
 chan = AnalogIn(ads, 1)
