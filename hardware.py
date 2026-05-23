@@ -87,45 +87,37 @@ chan = AnalogIn(ads, 1)
 def read_adc_voltage():
     return chan.voltage
 
-def read_current(window_ms=200):  # reduced from 500ms → faster response
+def read_current(window_ms=300):
     start = time.time()
 
     offset = chan.voltage
     sum_sq = 0.0
     samples = 0
 
-    def safe_read():
-        try:
-            return chan.voltage
-        except Exception:
-            time.sleep(0.002)
-            return chan.voltage
-
     while (time.time() - start) < (window_ms / 1000):
 
-        raw = safe_read()
+        time.sleep(0.001)
 
-        # adaptive DC offset tracking
-        offset += 0.01 * (raw - offset)
+        raw = chan.voltage
 
+        # same adaptive offset logic as your old code
+        offset += (raw - offset) * 0.01
         centered = raw - offset
 
         sum_sq += centered * centered
         samples += 1
-
-        # slightly faster sampling (better responsiveness)
-        time.sleep(0.0005)
 
     if samples == 0:
         return 0.0
 
     rms_voltage = math.sqrt(sum_sq / samples)
 
-    print("RMS Voltage:", rms_voltage)
+    # same scaling style you used before
+    current = rms_voltage * 1000  # replace 0.001 scaling
 
-    # CALIBRATION (SCT-013)
-    RAW_TO_AMP = 18.0
-    current = rms_voltage * RAW_TO_AMP
+    # same noise cutoff behavior
+    if current < 0.05:
+        return 0.0
 
     return round(current, 2)
 
