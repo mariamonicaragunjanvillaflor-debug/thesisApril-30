@@ -96,26 +96,26 @@ def read_current(window_ms=300):
 
     while (time.time() - start) < (window_ms / 1000):
 
-        time.sleep(0.001)
-
         raw = chan.voltage
 
-        # same adaptive offset logic as your old code
+        # stable offset tracking
         offset += (raw - offset) * 0.01
         centered = raw - offset
 
         sum_sq += centered * centered
         samples += 1
 
+        time.sleep(0.001)
+
     if samples == 0:
         return 0.0
 
     rms_voltage = math.sqrt(sum_sq / samples)
 
-    # same scaling style you used before
-    current = rms_voltage * 1000  # replace 0.001 scaling
+    # REAL SCT CONVERSION (IMPORTANT FIX)
+    current = (rms_voltage * CT_RATIO) / BURDEN_RESISTOR
 
-    # same noise cutoff behavior
+    # noise floor (keep simple)
     if current < 0.05:
         return 0.0
 
