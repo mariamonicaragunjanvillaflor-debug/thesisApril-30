@@ -86,7 +86,9 @@ chan = AnalogIn(ads, 1)
 def read_adc_voltage():
     return chan.voltage
 
-def read_current(window_ms=200):
+current_buffer = deque(maxlen=10)
+
+def read_current(window_ms=500):
     start = time.time()
 
     offset = chan.voltage
@@ -111,6 +113,23 @@ def read_current(window_ms=200):
     rms_voltage = math.sqrt(sum_sq / samples)
 
     print("RMS Voltage:", rms_voltage)
+
+    # =====================================================
+    # CONVERSION TO CURRENT (CALIBRATED)
+    # =====================================================
+    RAW_TO_AMP = 18.0   # YOU WILL TUNE THIS VALUE
+
+    current = rms_voltage * RAW_TO_AMP
+
+    # smoothing filter
+    current_buffer.append(current)
+    current_filtered = sum(current_buffer) / len(current_buffer)
+
+    # noise cutoff
+    if current_filtered < 0.05:
+        return 0.0
+
+    return round(current_filtered, 2)
 
     # =====================================================
     # SCT-013 CALIBRATION (THIS IS THE REAL FIX)
