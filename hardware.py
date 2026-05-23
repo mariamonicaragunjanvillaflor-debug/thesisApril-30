@@ -46,6 +46,7 @@ GPIO.output(BUZZER, 0)
 
 warning_last_toggle = 0
 critical_last_toggle = 0
+critical_buzzer_on = False
 # =========================================================
 # I2C SETUP
 # =========================================================
