@@ -81,7 +81,7 @@ ads = ADS.ADS1115(i2c)
 ads.gain = 16
 ads.data_rate = 860
 
-chan = AnalogIn(ads, 0)
+chan = AnalogIn(ads, 1)
 
 def read_adc_voltage():
     return chan.voltage
@@ -89,17 +89,16 @@ def read_adc_voltage():
 def read_current(window_ms=200):
     start = time.time()
 
-    offset = chan.voltage   # initialize offset with ADC voltage
+    offset = chan.voltage
     sum_sq = 0.0
     samples = 0
 
     while (time.time() - start) < (window_ms / 1000):
-
         time.sleep(0.001)
 
         raw = chan.voltage
 
-        # 🔥 same adaptive offset logic you used before
+        # adaptive offset removal
         offset += (raw - offset) * 0.01
         centered = raw - offset
 
@@ -111,21 +110,27 @@ def read_current(window_ms=200):
 
     rms_voltage = math.sqrt(sum_sq / samples)
 
-    # DEBUG (important for calibration)
     print("RMS Voltage:", rms_voltage)
 
-    # SCT-013 conversion
+    # =====================================================
+    # SCT-013 CALIBRATION (THIS IS THE REAL FIX)
+    # =====================================================
     CT_RATIO = 2000.0
     BURDEN = 220.0
 
-    current = rms_voltage * (CT_RATIO / BURDEN)
+    # base conversion
+    raw_current = rms_voltage * (CT_RATIO / BURDEN)
+
+    # 🔥 IMPORTANT: calibration factor (YOU NEED THIS)
+    CALIBRATION_FACTOR = 2.5
+
+    current = raw_current * CALIBRATION_FACTOR
 
     # noise floor
-    if current < 0.03:
+    if current < 0.05:
         return 0.0
 
     return round(current, 2)
-    print(chan.voltage)
 
 # =========================================================
 # LCD SETUP
