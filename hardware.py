@@ -21,8 +21,11 @@ FLASK_URL = "http://127.0.0.1:5000/api/update"
 TIMEOUT = 2
 
 time.sleep(2)
-CT_RATIO = 2000
+
+CT_RATIO = 2000.0
 BURDEN_RESISTOR = 220.0
+
+CALIBRATION = 2.2   # <-- THIS is what you are missing
 # =========================================================
 # GPIO SETUP
 # =========================================================
@@ -114,7 +117,7 @@ def read_current(window_ms=300):
     rms_voltage = math.sqrt(sum_sq / samples)
 
     # REAL SCT CONVERSION (IMPORTANT FIX)
-    current = (rms_voltage * CT_RATIO) / BURDEN_RESISTOR
+    current = ((rms_voltage * CT_RATIO) / BURDEN_RESISTOR) * CALIBRATION
 
     # noise floor (keep simple)
     if current < 0.05:
