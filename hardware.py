@@ -165,7 +165,17 @@ def safe_float(value):
         return float(value) if value is not None else 0.0
     except:
         return 0.0
+# =========================================================
+# OUTPUT STATE VARIABLES
+# =========================================================
+last_beep_time = 0
+last_green_blink = 0
 
+green_state = False
+buzzer_state = False
+
+warning_last_toggle = 0
+warning_buzzer_on = False
 # =========================================================
 # GPIO CONTROL
 # =========================================================
