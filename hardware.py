@@ -40,6 +40,7 @@ GPIO.output(GREEN_LED, 0)
 GPIO.output(RED_LED, 0)
 GPIO.output(BUZZER, 0)
 
+filtered_current = 0.0
 # =========================================================
 # I2C SETUP
 # =========================================================
@@ -87,7 +88,9 @@ def read_adc_voltage():
     return chan.voltage
 
 
-def read_current(window_ms=500):
+def read_current(window_ms=1000):
+    global filtered_current
+
     start = time.time()
 
     offset = chan.voltage
@@ -99,8 +102,8 @@ def read_current(window_ms=500):
 
         raw = chan.voltage
 
-        # adaptive offset removal (DC bias correction)
-        offset += (raw - offset) * 0.01
+        # improved adaptive DC offset removal
+        offset = offset + 0.01 * (raw - offset)
         centered = raw - offset
 
         sum_sq += centered * centered
@@ -111,23 +114,27 @@ def read_current(window_ms=500):
 
     rms_voltage = math.sqrt(sum_sq / samples)
 
-    # DEBUG (keep for calibration)
     print("RMS Voltage:", rms_voltage)
 
     # =========================
-    # CALIBRATION SECTION
+    # CALIBRATION (SCT-013)
     # =========================
-    RAW_TO_AMP = 18.0   # adjust using clamp meter
+    RAW_TO_AMP = 18.0   # tune using clamp meter
 
     current = rms_voltage * RAW_TO_AMP
 
     # =========================
-    # NOISE FILTER
+    # LOW-NOISE FILTER (IMPORTANT FIX)
     # =========================
-    if current < 0.05:
+    ALPHA = 0.25  # smoothing factor (0.1–0.3 ideal)
+
+    filtered_current = (ALPHA * current) + ((1 - ALPHA) * filtered_current)
+
+    # noise cutoff
+    if filtered_current < 0.05:
         return 0.0
 
-    return round(current, 2)
+    return round(filtered_current, 2)
 
 
 # =========================================================
