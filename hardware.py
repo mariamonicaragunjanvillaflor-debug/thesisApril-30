@@ -87,7 +87,7 @@ chan = AnalogIn(ads, 1)
 def read_adc_voltage():
     return chan.voltage
 
-def read_current(window_ms=500):
+def read_current(window_ms=200):  # reduced from 500ms → faster response
     start = time.time()
 
     offset = chan.voltage
@@ -105,16 +105,16 @@ def read_current(window_ms=500):
 
         raw = safe_read()
 
-        # stable adaptive DC offset tracking
-        offset += 0.015 * (raw - offset)
+        # adaptive DC offset tracking
+        offset += 0.01 * (raw - offset)
 
         centered = raw - offset
 
         sum_sq += centered * centered
         samples += 1
 
-        # small yield prevents I2C overload
-        time.sleep(0.001)
+        # slightly faster sampling (better responsiveness)
+        time.sleep(0.0005)
 
     if samples == 0:
         return 0.0
@@ -123,17 +123,9 @@ def read_current(window_ms=500):
 
     print("RMS Voltage:", rms_voltage)
 
-    # =========================
     # CALIBRATION (SCT-013)
-    # =========================
     RAW_TO_AMP = 18.0
     current = rms_voltage * RAW_TO_AMP
-
-    # =========================
-    # STABLE INSTANT DROP LOGIC
-    # =========================
-    if current < 0.08:
-        return 0.0
 
     return round(current, 2)
 
