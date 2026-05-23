@@ -99,7 +99,7 @@ def read_current(window_ms=500):
 
         raw = chan.voltage
 
-        # adaptive offset removal
+        # adaptive offset removal (DC bias correction)
         offset += (raw - offset) * 0.01
         centered = raw - offset
 
@@ -111,44 +111,24 @@ def read_current(window_ms=500):
 
     rms_voltage = math.sqrt(sum_sq / samples)
 
+    # DEBUG (keep for calibration)
     print("RMS Voltage:", rms_voltage)
 
-    # =====================================================
-    # CONVERSION TO CURRENT (CALIBRATED)
-    # =====================================================
-    RAW_TO_AMP = 18.0   # YOU WILL TUNE THIS VALUE
+    # =========================
+    # CALIBRATION SECTION
+    # =========================
+    RAW_TO_AMP = 18.0   # adjust using clamp meter
 
     current = rms_voltage * RAW_TO_AMP
 
-    # smoothing filter
-    current_buffer.append(current)
-    current_filtered = sum(current_buffer) / len(current_buffer)
-
-    # noise cutoff
-    if current_filtered < 0.05:
-        return 0.0
-
-    return round(current_filtered, 2)
-
-    # =====================================================
-    # SCT-013 CALIBRATION (THIS IS THE REAL FIX)
-    # =====================================================
-    CT_RATIO = 2000.0
-    BURDEN = 220.0
-
-    # base conversion
-    raw_current = rms_voltage * (CT_RATIO / BURDEN)
-
-    # 🔥 IMPORTANT: calibration factor (YOU NEED THIS)
-    CALIBRATION_FACTOR = 2.5
-
-    current = raw_current * CALIBRATION_FACTOR
-
-    # noise floor
+    # =========================
+    # NOISE FILTER
+    # =========================
     if current < 0.05:
         return 0.0
 
     return round(current, 2)
+
 
 # =========================================================
 # LCD SETUP
