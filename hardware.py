@@ -86,7 +86,6 @@ chan = AnalogIn(ads, 1)
 def read_adc_voltage():
     return chan.voltage
 
-current_buffer = deque(maxlen=10)
 
 def read_current(window_ms=500):
     start = time.time()
