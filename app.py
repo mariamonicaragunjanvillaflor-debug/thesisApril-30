@@ -126,12 +126,10 @@ Current: {reading.current_a:.2f}A
 Hotspot Risk: {risk['hotspot_prob']*100:.1f}%
 Overload Risk: {risk['overload_prob']*100:.1f}%
 
---- ACTION ---
+--- PROACTIVE ACTION RECOMMENDED ---
 {message_action}
 
---- ENGINEERING INSIGHT ---
-- Hotspot: possible loose terminals, oxidation, poor contact pressure, aging wiring
-- Overload: excessive load demand, undersized wiring, circuit imbalance
+
 """
 
     try:
