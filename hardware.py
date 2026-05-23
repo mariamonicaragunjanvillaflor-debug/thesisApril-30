@@ -87,7 +87,6 @@ chan = AnalogIn(ads, 1)
 def read_adc_voltage():
     return chan.voltage
 
-
 def read_current(window_ms=500):
     start = time.time()
 
@@ -95,16 +94,27 @@ def read_current(window_ms=500):
     sum_sq = 0.0
     samples = 0
 
-    while (time.time() - start) < (window_ms / 1000):
-        raw = chan.voltage
+    def safe_read():
+        try:
+            return chan.voltage
+        except Exception:
+            time.sleep(0.002)
+            return chan.voltage
 
-        # fast DC offset tracking (no heavy smoothing)
-        offset = offset + 0.02 * (raw - offset)
+    while (time.time() - start) < (window_ms / 1000):
+
+        raw = safe_read()
+
+        # stable adaptive DC offset tracking
+        offset += 0.015 * (raw - offset)
 
         centered = raw - offset
 
         sum_sq += centered * centered
         samples += 1
+
+        # small yield prevents I2C overload
+        time.sleep(0.001)
 
     if samples == 0:
         return 0.0
@@ -120,37 +130,12 @@ def read_current(window_ms=500):
     current = rms_voltage * RAW_TO_AMP
 
     # =========================
-    # INSTANT DROP FIX (IMPORTANT)
+    # STABLE INSTANT DROP LOGIC
     # =========================
-    # forces fast response when load is removed
     if current < 0.08:
         return 0.0
 
     return round(current, 2)
-
-
-# =========================================================
-# LCD SETUP
-# =========================================================
-def init_lcd():
-    for i in range(3):
-        try:
-            lcd = CharLCD(
-                i2c_expander='PCF8574',
-                address=0x27,
-                port=1,
-                cols=16,
-                rows=4
-            )
-            lcd.clear()
-            return lcd
-        except Exception as e:
-            print(f"LCD retry {i+1}/3 failed:", e)
-            time.sleep(1)
-
-    raise RuntimeError("LCD failed")
-
-lcd = init_lcd()
 
 # =========================================================
 # HELPERS
