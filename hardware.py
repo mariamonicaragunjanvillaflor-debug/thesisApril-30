@@ -44,7 +44,8 @@ GPIO.output(GREEN_LED, 0)
 GPIO.output(RED_LED, 0)
 GPIO.output(BUZZER, 0)
 
-
+warning_last_toggle = 0
+critical_last_toggle = 0
 # =========================================================
 # I2C SETUP
 # =========================================================
