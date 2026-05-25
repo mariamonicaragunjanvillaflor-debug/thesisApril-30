@@ -22,10 +22,7 @@ TIMEOUT = 2
 
 time.sleep(2)
 
-CT_RATIO = 2000.0
-BURDEN_RESISTOR = 220.0
 
-CALIBRATION = 2.2   # <-- THIS is what you are missing
 # =========================================================
 # GPIO SETUP
 # =========================================================
@@ -82,31 +79,66 @@ def read_temperature():
         return 0.0
 
 # =========================================================
-# ADS1115 SETUP (FIXED - NO SMBUS)
+# SCT-013-000 FINAL CALIBRATED MODULE (THESIS READY)
 # =========================================================
+TIMEOUT = 2
+CT_RATIO = 2000.0
+BURDEN_RESISTOR = 22.0
+
+# FINAL CALIBRATION (LOCKED FROM YOUR CLAMP TEST)
+CALIBRATION = 0.57
+
+NO_LOAD_THRESHOLD = 0.15
+WINDOW_SEC = 0.8
+
+# =========================================================
+# INIT
+# =========================================================
+
 ads = ADS.ADS1115(i2c)
 ads.gain = 1
 ads.data_rate = 860
 
+# A1 channel (your hardware)
 chan = AnalogIn(ads, 1)
 
-def read_adc_voltage():
-    return chan.voltage
+# =========================================================
+# INTERNAL OFFSET (AUTO STABILIZED)
+# =========================================================
 
-def read_current(window_ms=300):
+_offset = None
+
+def _update_offset(value):
+    """
+    Slowly tracks DC bias (no manual calibration needed)
+    """
+    global _offset
+
+    if _offset is None:
+        _offset = value
+
+    _offset += (value - _offset) * 0.01
+
+# =========================================================
+# MAIN FUNCTION
+# =========================================================
+
+def read_current(window_sec=WINDOW_SEC):
+    global _offset
+
     start = time.time()
 
-    offset = chan.voltage
     sum_sq = 0.0
     samples = 0
 
-    while (time.time() - start) < (window_ms / 1000):
+    while (time.time() - start) < window_sec:
 
-        raw = chan.voltage
+        v = chan.voltage
 
-        # stable offset tracking
-        offset += (raw - offset) * 0.01
-        centered = raw - offset
+        # auto bias tracking
+        _update_offset(v)
+
+        centered = v - _offset
 
         sum_sq += centered * centered
         samples += 1
@@ -114,18 +146,26 @@ def read_current(window_ms=300):
         time.sleep(0.001)
 
     if samples == 0:
-        return 0.0
+        return 0.0, 0.0
 
-    rms_voltage = math.sqrt(sum_sq / samples)
+    vrms = math.sqrt(sum_sq / samples)
 
-    # REAL SCT CONVERSION (IMPORTANT FIX)
-    current = ((rms_voltage * CT_RATIO) / BURDEN_RESISTOR) * CALIBRATION
+    current = (vrms * CT_RATIO / BURDEN_RESISTOR) * CALIBRATION
 
-    # noise floor (keep simple)
-    if current < 0.05:
-        return 0.0
+    # noise floor
+    if current < NO_LOAD_THRESHOLD:
+        current = 0.0
 
-    return round(current, 2)
+    return round(vrms, 6), round(current, 2)
+
+# =========================================================
+# SIMPLE WRAPPER (FOR FLASK / MAIN SYSTEM)
+# =========================================================
+
+def get_current():
+    _, current = read_current()
+    return current
+
 
 # =========================================================
 # LCD SETUP
