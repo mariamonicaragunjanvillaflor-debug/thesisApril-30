@@ -114,7 +114,7 @@ def read_current(window_sec=WINDOW_SEC):
         v = chan.voltage
 
         # IMPORTANT: use AC magnitude directly
-        sum_sq += v * v
+        sum_sq += v - 1.65
         samples += 1
 
         time.sleep(0.001)
