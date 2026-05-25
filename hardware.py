@@ -88,7 +88,7 @@ BURDEN_RESISTOR = 22.0
 # FINAL CALIBRATION (LOCKED FROM YOUR CLAMP TEST)
 CALIBRATION = 0.57
 
-NO_LOAD_THRESHOLD = 0.15
+NO_LOAD_THRESHOLD = 0
 WINDOW_SEC = 0.8
 
 # =========================================================
