@@ -102,7 +102,7 @@ ads.data_rate = 860
 # A1 channel (your hardware)
 chan = AnalogIn(ads, 1)
 
-_offset = 1.65  # fixed
+_offset = 1.62  # fixed
 
 def read_current(window_sec=WINDOW_SEC):
 
