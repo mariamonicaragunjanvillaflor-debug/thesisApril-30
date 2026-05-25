@@ -102,6 +102,8 @@ ads.data_rate = 860
 # A1 channel (your hardware)
 chan = AnalogIn(ads, 1)
 
+_offset = 1.65  # fixed
+
 def read_current(window_sec=WINDOW_SEC):
 
     start = time.time()
@@ -113,8 +115,9 @@ def read_current(window_sec=WINDOW_SEC):
 
         v = chan.voltage
 
-        # IMPORTANT: use AC magnitude directly
-        sum_sq += v - 1.65
+        centered = v - _offset
+
+        sum_sq += centered * centered
         samples += 1
 
         time.sleep(0.001)
@@ -130,10 +133,6 @@ def read_current(window_sec=WINDOW_SEC):
         current = 0.0
 
     return round(current, 2)
-
-
-def get_current():
-    return read_current()
 
 # =========================================================
 # LCD SETUP
