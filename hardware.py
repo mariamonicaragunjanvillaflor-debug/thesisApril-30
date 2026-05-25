@@ -135,9 +135,7 @@ def read_current(window_sec=WINDOW_SEC):
 
         v = chan.voltage
 
-        # auto bias tracking
         _update_offset(v)
-
         centered = v - _offset
 
         sum_sq += centered * centered
@@ -146,17 +144,16 @@ def read_current(window_sec=WINDOW_SEC):
         time.sleep(0.001)
 
     if samples == 0:
-        return 0.0, 0.0
+        return 0.0
 
     vrms = math.sqrt(sum_sq / samples)
 
     current = (vrms * CT_RATIO / BURDEN_RESISTOR) * CALIBRATION
 
-    # noise floor
     if current < NO_LOAD_THRESHOLD:
         current = 0.0
 
-    return round(vrms, 6), round(current, 2)
+    return round(current, 2)
 
 # =========================================================
 # SIMPLE WRAPPER (FOR FLASK / MAIN SYSTEM)
