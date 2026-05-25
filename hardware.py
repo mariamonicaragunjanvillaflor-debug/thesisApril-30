@@ -102,29 +102,7 @@ ads.data_rate = 860
 # A1 channel (your hardware)
 chan = AnalogIn(ads, 1)
 
-# =========================================================
-# INTERNAL OFFSET (AUTO STABILIZED)
-# =========================================================
-
-_offset = None
-
-def _update_offset(value):
-    """
-    Slowly tracks DC bias (no manual calibration needed)
-    """
-    global _offset
-
-    if _offset is None:
-        _offset = value
-
-    _offset += (value - _offset) * 0.01
-
-# =========================================================
-# MAIN FUNCTION
-# =========================================================
-
 def read_current(window_sec=WINDOW_SEC):
-    global _offset
 
     start = time.time()
 
@@ -135,10 +113,8 @@ def read_current(window_sec=WINDOW_SEC):
 
         v = chan.voltage
 
-        _update_offset(v)
-        centered = v - _offset
-
-        sum_sq += centered * centered
+        # IMPORTANT: use AC magnitude directly
+        sum_sq += v * v
         samples += 1
 
         time.sleep(0.001)
@@ -155,14 +131,9 @@ def read_current(window_sec=WINDOW_SEC):
 
     return round(current, 2)
 
-# =========================================================
-# SIMPLE WRAPPER (FOR FLASK / MAIN SYSTEM)
-# =========================================================
 
 def get_current():
-    _, current = read_current()
-    return current
-
+    return read_current()
 
 # =========================================================
 # LCD SETUP
