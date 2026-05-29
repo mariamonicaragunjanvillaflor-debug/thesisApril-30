@@ -219,8 +219,8 @@ def update_data():
     X = build_basic_features(temp, current)
     X = X.reindex(columns=FEATURE_COLUMNS, fill_value=0)
 
-    hot_prob = hotspot_model.predict_proba(X)[0][1]
-    ovl_prob = overload_model.predict_proba(X)[0][1]
+    hot_prob = float(hotspot_model.predict_proba(X)[0][1])
+    ovl_prob = float(overload_model.predict_proba(X)[0][1])
 
     state, status = determine_state(hot_prob, ovl_prob)
 
