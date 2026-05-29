@@ -8,8 +8,10 @@ from datetime import datetime
 
 from feature_engine import (
     build_basic_features,
-    temp_buffer,
-    current_buffer
+    temp_buffer_short,
+    temp_buffer_long,
+    current_buffer_short,
+    current_buffer_long
 )
 
 # =========================================================
@@ -154,7 +156,7 @@ Overload Risk: {risk['overload_prob']*100:.1f}%
 # =========================================================
 def determine_state(hot_prob, ovl_prob):
 
-    if len(temp_buffer) < WARMUP_SAMPLES:
+    if len(temp_buffer_short) < 10 or len(temp_buffer_long) < 10:
         return "WarmingUp", "System initializing..."
 
     if hot_prob >= CRITICAL_THRESHOLD:
@@ -221,9 +223,24 @@ def update_data():
 
     hot_prob = hotspot_model.predict_proba(X)[0][1]
     ovl_prob = overload_model.predict_proba(X)[0][1]
-
+    
+    composite = (hot_prob + ovl_prob) / 2
+    
     state, status = determine_state(hot_prob, ovl_prob)
+# =====================================================
+# FORECAST (OPTIONAL, NO RETRAINING)
+# =====================================================
+    feat = X
 
+    future_temp = temp
+    future_current = current
+
+    try:
+        future_temp = temp + feat["temp_slope_short"].values[0] * 10
+        future_current = current + feat["current_slope_short"].values[0] * 10
+    except:
+        pass
+        
     action = get_action(
         state,
         hot_prob >= WARNING_THRESHOLD,
@@ -258,6 +275,11 @@ def update_data():
             "overload_prob": ovl_prob,
             "composite_risk": (hot_prob + ovl_prob) / 2
         },
+        "forecast": {
+            "future_temp": round(future_temp, 2),
+            "future_current": round(future_current, 2)
+        },
+        "buffer_size": len(temp_buffer_short),
         "time": datetime.now().strftime("%H:%M:%S")
     })
 
