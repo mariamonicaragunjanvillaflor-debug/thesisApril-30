@@ -261,24 +261,25 @@ def update_data():
                 message_action=action
             )
 
-latest_data_store.update({
-    "temperature": float(temp),
-    "current": float(current),
-    "state": state,
-    "status": status,
-    "action": action,
-    "ml": {
-        "hotspot_prob": float(hot_prob),
-        "overload_prob": float(ovl_prob),
-        "composite_risk": float((hot_prob + ovl_prob) / 2)
-    },
-    "forecast": {
-        "future_temp": float(round(future_temp, 2)),
-        "future_current": float(round(future_current, 2))
-    },
-    "buffer_size": int(len(temp_buffer_short)),
-    "time": datetime.now().strftime("%H:%M:%S")
-})
+    # ✅ FIXED INDENTATION HERE (THIS WAS YOUR BUG)
+    latest_data_store.update({
+        "temperature": float(temp),
+        "current": float(current),
+        "state": state,
+        "status": status,
+        "action": action,
+        "ml": {
+            "hotspot_prob": float(hot_prob),
+            "overload_prob": float(ovl_prob),
+            "composite_risk": float((hot_prob + ovl_prob) / 2)
+        },
+        "forecast": {
+            "future_temp": float(round(future_temp, 2)),
+            "future_current": float(round(future_current, 2))
+        },
+        "buffer_size": int(len(temp_buffer_short)),
+        "time": datetime.now().strftime("%H:%M:%S")
+    })
 
     print(f"[{state}] T={temp:.2f} I={current:.2f} HP={hot_prob:.2f} OP={ovl_prob:.2f}")
 
