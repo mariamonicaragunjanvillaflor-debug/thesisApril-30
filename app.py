@@ -130,8 +130,6 @@ Overload Risk: {risk['overload_prob']*100:.1f}%
 
 --- PROACTIVE ACTION RECOMMENDED ---
 {message_action}
-
-
 """
 
     try:
@@ -175,33 +173,33 @@ def determine_state(hot_prob, ovl_prob):
 
 
 # =========================================================
-# ACTION ENGINE (Human + Engineering)
+# ACTION ENGINE
 # =========================================================
 def get_action(state, hotspot, overload):
 
     if state == "Warning":
 
         if hotspot and overload:
-            return "Reduce load immediately → hotspot + overload detected. Check for loose terminals and wiring."
+            return "Reduce load immediately → hotspot + overload detected. Check wiring."
 
         if hotspot:
-            return "Reduce load and inspect connections → possible loose terminals or oxidation."
+            return "Reduce load and inspect connections."
 
         if overload:
-            return "Turn off heavy appliances → circuit nearing capacity limit."
+            return "Turn off heavy appliances."
 
         return "Monitor system."
 
     if state == "Critical":
 
         if hotspot and overload:
-            return "SHUT DOWN SYSTEM → severe heat + overload risk. Inspect breaker immediately."
+            return "SHUT DOWN SYSTEM immediately."
 
         if hotspot:
-            return "SHUT DOWN → overheating likely from poor contact or damaged insulation."
+            return "SHUT DOWN → overheating detected."
 
         if overload:
-            return "DISCONNECT LOAD → overload beyond safe limit."
+            return "DISCONNECT LOAD immediately."
 
         return "Emergency inspection required."
 
@@ -221,15 +219,14 @@ def update_data():
     X = build_basic_features(temp, current)
     X = X.reindex(columns=FEATURE_COLUMNS, fill_value=0)
 
-    hot_prob = float(hotspot_model.predict_proba(X)[0][1])
-    ovl_prob = float(overload_model.predict_proba(X)[0][1])
-    
-    composite = (hot_prob + ovl_prob) / 2
-    
+    hot_prob = hotspot_model.predict_proba(X)[0][1]
+    ovl_prob = overload_model.predict_proba(X)[0][1]
+
     state, status = determine_state(hot_prob, ovl_prob)
-# =====================================================
-# FORECAST (OPTIONAL, NO RETRAINING)
-# =====================================================
+
+    # =====================================================
+    # FORECAST (FIXED INDENTATION)
+    # =====================================================
     feat = X
 
     future_temp = temp
@@ -240,7 +237,7 @@ def update_data():
         future_current = current + feat["current_slope_short"].values[0] * 10
     except:
         pass
-        
+
     action = get_action(
         state,
         hot_prob >= WARNING_THRESHOLD,
@@ -264,28 +261,24 @@ def update_data():
                 message_action=action
             )
 
-   latest_data_store.update({
-    "temperature": float(temp),
-    "current": float(current),
-    "state": str(state),
-    "status": str(status),
-    "action": str(action),
-
-    "ml": {
-        "hotspot_prob": float(hot_prob),
-        "overload_prob": float(ovl_prob),
-        "composite_risk": float((hot_prob + ovl_prob) / 2)
-    },
-
-    "forecast": {
-        "future_temp": float(round(future_temp, 2)),
-        "future_current": float(round(future_current, 2))
-    },
-
-    "buffer_size": int(len(temp_buffer_short)),
-
-    "time": datetime.now().strftime("%H:%M:%S")
-})
+    latest_data_store.update({
+        "temperature": temp,
+        "current": current,
+        "state": state,
+        "status": status,
+        "action": action,
+        "ml": {
+            "hotspot_prob": hot_prob,
+            "overload_prob": ovl_prob,
+            "composite_risk": (hot_prob + ovl_prob) / 2
+        },
+        "forecast": {
+            "future_temp": round(future_temp, 2),
+            "future_current": round(future_current, 2)
+        },
+        "buffer_size": len(temp_buffer_short),
+        "time": datetime.now().strftime("%H:%M:%S")
+    })
 
     print(f"[{state}] T={temp:.2f} I={current:.2f} HP={hot_prob:.2f} OP={ovl_prob:.2f}")
 
