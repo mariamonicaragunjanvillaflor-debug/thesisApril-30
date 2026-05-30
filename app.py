@@ -61,7 +61,7 @@ FEATURE_COLUMNS = hotspot_model.feature_names_in_.tolist()
 # THRESHOLDS
 # =========================================================
 WARMUP_SAMPLES = 10
-WARNING_THRESHOLD = 0.60
+WARNING_THRESHOLD = 0.70
 CRITICAL_THRESHOLD = 0.85
 
 # =========================================================
