@@ -86,53 +86,62 @@ CT_RATIO = 2000.0
 BURDEN_RESISTOR = 22.0
 
 # FINAL CALIBRATION (LOCKED FROM YOUR CLAMP TEST)
-CALIBRATION = 0.973
+CALIBRATION = 1.0
 
-NO_LOAD_THRESHOLD = 0
+NO_LOAD_THRESHOLD = 0.05
 WINDOW_SEC = 0.8
 
 # =========================================================
 # INIT
 # =========================================================
 
+# ---------------- I2C SETUP ----------------
+i2c = busio.I2C(board.SCL, board.SDA)
+
 ads = ADS.ADS1115(i2c)
 ads.gain = 1
 ads.data_rate = 860
 
-# A1 channel (your hardware)
+# SCT connected to A1 (FOLLOWED EXACTLY)
 chan = AnalogIn(ads, 1)
 
-_offset = 1.63976 # fixed
 
-def read_current(window_sec=WINDOW_SEC):
+def read_current():
 
     start = time.time()
 
-    sum_sq = 0.0
-    samples = 0
+   samples = []
+    bias_samples = []
 
-    while (time.time() - start) < window_sec:
-
-        v = chan.voltage
-
-        centered = v - _offset
-
-        sum_sq += centered * centered
-        samples += 1
-
+    # estimate bias
+    while time.time() - start_time < WINDOW_SEC:
+        bias_samples.append(chan.voltage)
         time.sleep(0.001)
 
-    if samples == 0:
-        return 0.0
+    bias = sum(bias_samples) / len(bias_samples)
 
-    vrms = math.sqrt(sum_sq / samples)
+    # RMS sampling
+    start_time = time.time()
 
-    current = (vrms * CT_RATIO / BURDEN_RESISTOR) * CALIBRATION
+    while time.time() - start_time < WINDOW_SEC:
+        v = chan.voltage
+        ac = v - bias
+        samples.append(ac)
+        time.sleep(0.001)
 
-    if current < NO_LOAD_THRESHOLD:
-        current = 0.0
+    sum_sq = 0
+    for s in samples:
+        sum_sq += s * s
 
-    return round(current, 2)
+    vrms = math.sqrt(sum_sq / len(samples))
+
+    irms = (vrms / BURDEN_RESISTOR) * CT_RATIO
+    irms *= CALIBRATION
+
+    if irms < NO_LOAD_THRESHOLD:
+        irms = 0.0
+
+    return irms
 
 # =========================================================
 # LCD SETUP
