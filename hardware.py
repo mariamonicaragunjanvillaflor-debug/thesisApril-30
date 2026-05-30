@@ -22,7 +22,6 @@ TIMEOUT = 2
 
 time.sleep(2)
 
-
 # =========================================================
 # GPIO SETUP
 # =========================================================
@@ -44,6 +43,8 @@ GPIO.output(BUZZER, 0)
 warning_last_toggle = 0
 critical_last_toggle = 0
 critical_buzzer_on = False
+warning_buzzer_on = False
+
 # =========================================================
 # I2C SETUP
 # =========================================================
@@ -70,69 +71,56 @@ def read_temperature():
     try:
         if mlx is None:
             init_mlx()
-
         return float(mlx.object_temperature)
-
     except Exception as e:
         print("MLX ERROR:", e)
         init_mlx()
         return 0.0
 
 # =========================================================
-# SCT-013-000 FINAL CALIBRATED MODULE (THESIS READY)
+# SCT-013-000 FINAL CALIBRATED MODULE
 # =========================================================
-TIMEOUT = 2
 CT_RATIO = 2000.0
 BURDEN_RESISTOR = 22.0
-
-# FINAL CALIBRATION (LOCKED FROM YOUR CLAMP TEST)
 CALIBRATION = 1.0
 
 NO_LOAD_THRESHOLD = 0.05
 WINDOW_SEC = 0.8
 
-# =========================================================
-# INIT
-# =========================================================
-
-# ---------------- I2C SETUP ----------------
+# ADS1115 SETUP
 i2c = busio.I2C(board.SCL, board.SDA)
-
 ads = ADS.ADS1115(i2c)
 ads.gain = 1
 ads.data_rate = 860
 
-# SCT connected to A1 (FOLLOWED EXACTLY)
 chan = AnalogIn(ads, 1)
-
 
 def read_current():
 
-    start = time.time()
-
-   samples = []
+    samples = []
     bias_samples = []
 
-    # estimate bias
+    # =========================
+    # Bias estimation
+    # =========================
+    start_time = time.time()
     while time.time() - start_time < WINDOW_SEC:
         bias_samples.append(chan.voltage)
         time.sleep(0.001)
 
     bias = sum(bias_samples) / len(bias_samples)
 
+    # =========================
     # RMS sampling
+    # =========================
     start_time = time.time()
-
     while time.time() - start_time < WINDOW_SEC:
         v = chan.voltage
         ac = v - bias
         samples.append(ac)
         time.sleep(0.001)
 
-    sum_sq = 0
-    for s in samples:
-        sum_sq += s * s
-
+    sum_sq = sum(s * s for s in samples)
     vrms = math.sqrt(sum_sq / len(samples))
 
     irms = (vrms / BURDEN_RESISTOR) * CT_RATIO
@@ -181,17 +169,7 @@ def safe_float(value):
         return float(value) if value is not None else 0.0
     except:
         return 0.0
-# =========================================================
-# OUTPUT STATE VARIABLES
-# =========================================================
-last_beep_time = 0
-last_green_blink = 0
 
-green_state = False
-buzzer_state = False
-
-warning_last_toggle = 0
-warning_buzzer_on = False
 # =========================================================
 # GPIO CONTROL
 # =========================================================
@@ -201,17 +179,11 @@ def set_outputs(state):
 
     now = time.time()
 
-    # =========================
-    # NORMAL
-    # =========================
     if state == "Normal":
         GPIO.output(GREEN_LED, 1)
         GPIO.output(RED_LED, 0)
         GPIO.output(BUZZER, 0)
 
-    # =========================
-    # WARNING (2 sec ON, 3 sec OFF cycle)
-    # =========================
     elif state == "Warning":
         GPIO.output(GREEN_LED, 0)
         GPIO.output(RED_LED, 1)
@@ -221,14 +193,10 @@ def set_outputs(state):
             GPIO.output(BUZZER, warning_buzzer_on)
             warning_last_toggle = now
 
-    # =========================
-    # CRITICAL (fast intermittent + long beep feel)
-    # =========================
     elif state == "Critical":
         GPIO.output(GREEN_LED, 0)
         GPIO.output(RED_LED, 1)
 
-        # fast beep cycle (0.2s on/off)
         if now - critical_last_toggle >= 0.2:
             critical_buzzer_on = not critical_buzzer_on
             GPIO.output(BUZZER, critical_buzzer_on)
@@ -245,7 +213,7 @@ def set_outputs(state):
         GPIO.output(BUZZER, 0)
 
 # =========================================================
-# LCD DISPLAY
+# LCD UPDATE
 # =========================================================
 def lcd_update(state, ml, temp, current):
     try:
@@ -257,55 +225,25 @@ def lcd_update(state, ml, temp, current):
         hotspot = ml.get("hotspot_prob", 0.0) if ml else 0.0
         overload = ml.get("overload_prob", 0.0) if ml else 0.0
 
-        # =========================
-        # LINE 1: TIME
-        # =========================
         lcd.cursor_pos = (0, 0)
         lcd.write_string(center(now))
 
-        # =========================
-        # LINE 2: TEMPERATURE
-        # =========================
         lcd.cursor_pos = (1, 0)
         lcd.write_string(center(f"T:{temp:.1f}C"))
 
-        # =========================
-        # LINE 3: CURRENT
-        # =========================
         lcd.cursor_pos = (2, 0)
         lcd.write_string(center(f"I:{current:.2f}A"))
 
-        # =========================
-        # LINE 4: STATE + ALERT FLAGS
-        # =========================
         lcd.cursor_pos = (3, 0)
 
         if state == "Normal":
             lcd.write_string(center("SYSTEM OK"))
-
         elif state == "Warning":
-            if hotspot >= 0.6 and overload >= 0.6:
-                lcd.write_string(center("WARN: H+OVERLOAD"))
-            elif hotspot >= 0.6:
-                lcd.write_string(center("WARN: OVERHEAT"))
-            elif overload >= 0.6:
-                lcd.write_string(center("WARN: OVERLOAD"))
-            else:
-                lcd.write_string(center("CHECK LOAD"))
-
+            lcd.write_string(center("WARNING"))
         elif state == "Critical":
-            if hotspot >= 0.85 and overload >= 0.85:
-                lcd.write_string(center("CRIT: H+OVERLOAD"))
-            elif hotspot >= 0.85:
-                lcd.write_string(center("CRIT: OVERHEAT"))
-            elif overload >= 0.85:
-                lcd.write_string(center("CRIT: OVERLOAD"))
-            else:
-                lcd.write_string(center("CRITICAL"))
-
+            lcd.write_string(center("CRITICAL"))
         elif state == "WarmingUp":
             lcd.write_string(center("STARTING UP"))
-
         else:
             lcd.write_string(center("SYSTEM ERROR"))
 
@@ -315,7 +253,6 @@ def lcd_update(state, ml, temp, current):
             lcd.clear()
         except:
             pass
-
 
 # =========================================================
 # MAIN LOOP
@@ -329,14 +266,14 @@ def run():
     temp = 0.0
     current = 0.0
     state = "Normal"
-    ml = {"composite_risk": 0}
+    ml = {}
 
     while True:
         now = time.time()
 
         if now - last_sensor >= 1.0:
             last_sensor = now
-            
+
             temp = read_temperature()
             current = read_current()
 
@@ -351,14 +288,13 @@ def run():
 
                 result = response.json()
                 state = result.get("state", "Normal")
-                ml = result.get("ml", ml)
+                ml = result.get("ml", {})
 
             except Exception as e:
                 print("API ERROR:", e)
                 state = "Warning"
 
             set_outputs(state)
-        
 
         if now - last_lcd >= LCD_REFRESH_INTERVAL:
             lcd_update(state, ml, temp, current)
