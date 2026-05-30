@@ -148,7 +148,19 @@ Overload Risk: {risk['overload_prob']*100:.1f}%
         log_fallback_alert(subject, body)
         return False, str(e)
 
+# =========================================================
+# FEATURE BUILDER WRAPPER
+# =========================================================
+def build_hotspot_X(temp, current):
+    feat = build_basic_features(temp, current)
+    feat = feat.reindex(columns=HOTSPOT_FEATURES, fill_value=0)
+    return feat
 
+
+def build_overload_X(temp, current):
+    feat = build_basic_features(temp, current)
+    feat = feat.reindex(columns=OVERLOAD_FEATURES, fill_value=0)
+    return feat
 # =========================================================
 # STATE LOGIC
 # =========================================================
@@ -216,34 +228,28 @@ def update_data():
     temp = float(data["temperature"])
     current = float(data["current"])
 
-    X = build_basic_features(temp, current)
-    X = X.reindex(columns=FEATURE_COLUMNS, fill_value=0)
+     # =========================
+    # HOTSPOT MODEL INPUT
+    # =========================
+    X_hot = build_hotspot_X(temp, current)
+    hot_prob = float(hotspot_model.predict_proba(X_hot)[0][1])
 
-    hot_prob = float(hotspot_model.predict_proba(X)[0][1])
-    ovl_prob = float(overload_model.predict_proba(X)[0][1])
+    # =========================
+    # OVERLOAD MODEL INPUT
+    # =========================
+    X_ovr = build_overload_X(temp, current)
+    ovl_prob = float(overload_model.predict_proba(X_ovr)[0][1])
 
+    # =========================
+    # STATE
+    # =========================
     state, status = determine_state(hot_prob, ovl_prob)
-
-    # =====================================================
-    # FORECAST (FIXED INDENTATION)
-    # =====================================================
-    feat = X
-
-    future_temp = temp
-    future_current = current
-
-    try:
-        future_temp = temp + feat["temp_slope_short"].values[0] * 10
-        future_current = current + feat["current_slope_short"].values[0] * 10
-    except:
-        pass
 
     action = get_action(
         state,
         hot_prob >= WARNING_THRESHOLD,
         ovl_prob >= WARNING_THRESHOLD
     )
-
     # ALERTS
     if state in ["Warning", "Critical"]:
         if should_send_alert(state):
