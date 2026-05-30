@@ -55,6 +55,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 hotspot_model = joblib.load(os.path.join(BASE_DIR, "ml/hotspot_model.pkl"))
 overload_model = joblib.load(os.path.join(BASE_DIR, "ml/overload_model.pkl"))
 
+HOTSPOT_FEATURES = hotspot_model.feature_names_in_.tolist()
+OVERLOAD_FEATURES = overload_model.feature_names_in_.tolist()
+
 FEATURE_COLUMNS = hotspot_model.feature_names_in_.tolist()
 
 # =========================================================
