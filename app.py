@@ -244,6 +244,21 @@ def update_data():
     ovl_prob = float(overload_model.predict_proba(X_ovr)[0][1])
 
     # =========================
+# SAFE FORECAST BLOCK
+# =========================
+
+    try:
+        future_temp = temp + float(X_hot["temp_slope_short"].iloc[0]) * 10
+    except:
+        future_temp = temp
+
+    try:
+        future_current = current + float(X_ovr["current_slope_short"].iloc[0]) * 10
+    except:
+        future_current = current
+
+    
+    # =========================
     # STATE
     # =========================
     state, status = determine_state(hot_prob, ovl_prob)
