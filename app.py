@@ -64,6 +64,8 @@ OVERLOAD_FEATURES = overload_model.feature_names_in_.tolist()
 WARMUP_SAMPLES = 20
 WARNING_THRESHOLD = 0.60
 CRITICAL_THRESHOLD = 0.70
+WARNING_OVL = 0.75
+CRITICAL_OVL = 0.90
 
 # =========================================================
 # ALERT TRACKING
@@ -160,13 +162,13 @@ def determine_state(hot_prob, ovl_prob):
     if hot_prob >= CRITICAL_THRESHOLD:
         return "Critical", "Severe overheating detected"
 
-    if ovl_prob >= CRITICAL_THRESHOLD:
+    if ovl_prob >= CRITICAL_OVL:
         return "Critical", "Severe overload detected"
 
     if hot_prob >= WARNING_THRESHOLD:
         return "Warning", "Elevated temperature detected"
 
-    if ovl_prob >= WARNING_THRESHOLD:
+    if ovl_prob >= WARNING_OVL:
         return "Warning", "High load detected"
 
     return "Normal", "System stable"
