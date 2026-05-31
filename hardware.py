@@ -202,8 +202,11 @@ def set_outputs(state):
         GPIO.output(BUZZER, 1)
 
     elif state == "WarmingUp":
-        GPIO.output(GREEN_LED, int(time.time() * 2) % 2)
         GPIO.output(RED_LED, 0)
+
+        blink = (time.time() % 0.3) < 0.15  # fast toggle
+        GPIO.output(GREEN_LED, 1 if blink else 0)
+
         GPIO.output(BUZZER, 0)
 
     else:
