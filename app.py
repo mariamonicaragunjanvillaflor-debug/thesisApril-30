@@ -61,7 +61,7 @@ OVERLOAD_FEATURES = overload_model.feature_names_in_.tolist()
 # =========================================================
 # THRESHOLDS
 # =========================================================
-WARMUP_SAMPLES = 20
+WARMUP_SAMPLES = 10
 WARNING_THRESHOLD = 0.60
 CRITICAL_THRESHOLD = 0.70
 WARNING_OVL = 0.75
@@ -156,7 +156,7 @@ def build_overload_X(temp, current):
 # =========================================================
 def determine_state(hot_prob, ovl_prob):
 
-    if len(temp_buffer_short) < 10 or len(temp_buffer_long) < 10:
+    if len(temp_buffer_short) < WARMUP_SAMPLES or len(temp_buffer_long) < WARMUP_SAMPLES:
         return "WarmingUp", "System initializing..."
 
     if hot_prob >= CRITICAL_THRESHOLD:
