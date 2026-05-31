@@ -62,8 +62,8 @@ OVERLOAD_FEATURES = overload_model.feature_names_in_.tolist()
 # THRESHOLDS
 # =========================================================
 WARMUP_SAMPLES = 10
-WARNING_THRESHOLD = 0.70
-CRITICAL_THRESHOLD = 0.85
+WARNING_THRESHOLD = 0.65
+CRITICAL_THRESHOLD = 0.75
 
 # =========================================================
 # ALERT TRACKING
