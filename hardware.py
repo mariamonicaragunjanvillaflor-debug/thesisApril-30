@@ -202,7 +202,7 @@ def set_outputs(state):
         GPIO.output(BUZZER, 1)
 
     elif state == "WarmingUp":
-        GPIO.output(GREEN_LED, int(time.time() * 2) % 2)
+        GPIO.output(GREEN_LED, int(time.time() * 5) % 2)
         GPIO.output(RED_LED, 0)
         GPIO.output(BUZZER, 0)
 
