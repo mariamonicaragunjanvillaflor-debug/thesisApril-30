@@ -11,7 +11,8 @@ from feature_engine import (
     temp_buffer_short,
     temp_buffer_long,
     current_buffer_short,
-    current_buffer_long
+    current_buffer_long,
+    reset_buffers
 )
 
 # =========================================================
