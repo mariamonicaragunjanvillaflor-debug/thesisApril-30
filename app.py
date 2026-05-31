@@ -58,8 +58,6 @@ overload_model = joblib.load(os.path.join(BASE_DIR, "ml/overload_model.pkl"))
 HOTSPOT_FEATURES = hotspot_model.feature_names_in_.tolist()
 OVERLOAD_FEATURES = overload_model.feature_names_in_.tolist()
 
-FEATURE_COLUMNS = hotspot_model.feature_names_in_.tolist()
-
 # =========================================================
 # THRESHOLDS
 # =========================================================
@@ -81,21 +79,6 @@ def should_send_alert(alert_type):
             return False
     last_alert_time[alert_type] = now
     return True
-
-
-# =========================================================
-# FALLBACK LOGGER
-# =========================================================
-def log_fallback_alert(subject, body):
-    try:
-        with open("alert_fallback_log.txt", "a") as f:
-            f.write("\n============================\n")
-            f.write(f"TIME: {datetime.now()}\n")
-            f.write(f"SUBJECT: {subject}\n")
-            f.write(body + "\n")
-        print("✓ Alert saved locally (fallback log)")
-    except Exception as e:
-        print("⚠ Fallback logging failed:", e)
 
 
 # =========================================================
@@ -148,8 +131,8 @@ Overload Risk: {risk['overload_prob']*100:.1f}%
 
     except Exception as e:
         print("✗ Email failed:", e)
-        log_fallback_alert(subject, body)
         return False, str(e)
+
 
 # =========================================================
 # FEATURE BUILDER WRAPPER
@@ -164,6 +147,8 @@ def build_overload_X(temp, current):
     feat = build_basic_features(temp, current)
     feat = feat.reindex(columns=OVERLOAD_FEATURES, fill_value=0)
     return feat
+
+
 # =========================================================
 # STATE LOGIC
 # =========================================================
@@ -231,7 +216,7 @@ def update_data():
     temp = float(data["temperature"])
     current = float(data["current"])
 
-     # =========================
+    # =========================
     # HOTSPOT MODEL INPUT
     # =========================
     X_hot = build_hotspot_X(temp, current)
@@ -244,17 +229,14 @@ def update_data():
     ovl_prob = float(overload_model.predict_proba(X_ovr)[0][1])
 
     # =========================
-# SAFE FORECAST BLOCK
-# =========================
-
-   try:
+    # SAFE FORECAST BLOCK
+    # =========================
+    try:
         slope1 = (
             float(X_hot["temp_slope_short"].iloc[0]) * 0.7 +
             float(X_hot["temp_slope_long"].iloc[0]) * 0.3
         )
-
         future_temp = temp + slope1 * 10
-
     except Exception:
         future_temp = temp
 
@@ -265,7 +247,6 @@ def update_data():
 
     future_current = current + slope * 10
 
-    
     # =========================
     # STATE
     # =========================
@@ -276,7 +257,10 @@ def update_data():
         hot_prob >= WARNING_THRESHOLD,
         ovl_prob >= WARNING_THRESHOLD
     )
+
+    # =========================
     # ALERTS
+    # =========================
     if state in ["Warning", "Critical"]:
         if should_send_alert(state):
 
@@ -293,7 +277,9 @@ def update_data():
                 message_action=action
             )
 
-    # ✅ FIXED INDENTATION HERE (THIS WAS YOUR BUG)
+    # =========================
+    # STORE RESPONSE
+    # =========================
     latest_data_store.update({
         "temperature": float(temp),
         "current": float(current),
