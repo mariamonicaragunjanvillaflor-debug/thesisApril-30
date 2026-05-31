@@ -188,17 +188,17 @@ def set_outputs(state):
         GPIO.output(GREEN_LED, 0)
         GPIO.output(RED_LED, 1)
 
-    # faster beep cycle
-    if now - warning_last_toggle >= (0.5 if warning_buzzer_on else 0.5):
-        warning_buzzer_on = not warning_buzzer_on
-        GPIO.output(BUZZER, warning_buzzer_on)
-        warning_last_toggle = now
+        # FAST BEEP (correctly inside Warning ONLY)
+        if now - warning_last_toggle >= 0.5:
+            warning_buzzer_on = not warning_buzzer_on
+            GPIO.output(BUZZER, warning_buzzer_on)
+            warning_last_toggle = now
 
     elif state == "Critical":
         GPIO.output(GREEN_LED, 0)
         GPIO.output(RED_LED, 1)
 
-    # LONG BEEP (steady ON)
+        # LONG BEEP
         GPIO.output(BUZZER, 1)
 
     elif state == "WarmingUp":
