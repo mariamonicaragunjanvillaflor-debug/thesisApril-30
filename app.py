@@ -247,15 +247,23 @@ def update_data():
 # SAFE FORECAST BLOCK
 # =========================
 
-    try:
-        future_temp = temp + float(X_hot["temp_slope_short"].iloc[0]) * 10
-    except:
+   try:
+        slope1 = (
+            float(X_hot["temp_slope_short"].iloc[0]) * 0.7 +
+            float(X_hot["temp_slope_long"].iloc[0]) * 0.3
+        )
+
+        future_temp = temp + slope1 * 10
+
+    except Exception:
         future_temp = temp
 
     try:
-        future_current = current + float(X_ovr["current_slope_short"].iloc[0]) * 10
+        slope = float(X_ovr["current_slope_short"].iloc[0])
     except:
-        future_current = current
+        slope = 0.0
+
+    future_current = current + slope * 10
 
     
     # =========================
