@@ -229,7 +229,9 @@ def update_data():
     # =========================
     X_ovr = build_overload_X(temp, current)
     ovl_prob = float(overload_model.predict_proba(X_ovr)[0][1])
-
+    
+    if current < 16:
+        ovl_prob *= 0.5
     # =========================
     # SAFE FORECAST BLOCK
     # =========================
