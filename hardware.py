@@ -202,7 +202,7 @@ def set_outputs(state):
         GPIO.output(BUZZER, 1)
 
     elif state == "WarmingUp":
-        GPIO.output(GREEN_LED, int(time.time() * 5) % 2)
+        GPIO.output(GREEN_LED, int(time.time() * 2) % 2)
         GPIO.output(RED_LED, 0)
         GPIO.output(BUZZER, 0)
 
@@ -237,12 +237,30 @@ def lcd_update(state, ml, temp, current):
 
         if state == "Normal":
             lcd.write_string(center("SYSTEM OK"))
+
         elif state == "Warning":
-            lcd.write_string(center("WARNING"))
+            if hotspot >= 0.6 and overload >= 0.6:
+                lcd.write_string(center("WARN: H+OVERLOAD"))
+            elif hotspot >= 0.6:
+                lcd.write_string(center("WARN: OVERHEAT"))
+            elif overload >= 0.6:
+                lcd.write_string(center("WARN: OVERLOAD"))
+            else:
+                lcd.write_string(center("CHECK LOAD"))
+
         elif state == "Critical":
-            lcd.write_string(center("CRITICAL"))
+            if hotspot >= 0.85 and overload >= 0.85:
+                lcd.write_string(center("CRIT: H+OVERLOAD"))
+            elif hotspot >= 0.85:
+                lcd.write_string(center("CRIT: OVERHEAT"))
+            elif overload >= 0.85:
+                lcd.write_string(center("CRIT: OVERLOAD"))
+            else:
+                lcd.write_string(center("CRITICAL"))
+
         elif state == "WarmingUp":
             lcd.write_string(center("STARTING UP"))
+
         else:
             lcd.write_string(center("SYSTEM ERROR"))
 
